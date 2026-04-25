@@ -30,6 +30,19 @@ function storageSet(value) {
   });
 }
 
+function truncateText(text, maxLength = 140) {
+  if (!text) {
+    return "—";
+  }
+
+  const trimmed = text.trim();
+  if (trimmed.length <= maxLength) {
+    return trimmed;
+  }
+
+  return `${trimmed.slice(0, maxLength).trimEnd()}...`;
+}
+
 function SignupStep({ form, onChange, onSubmit }) {
   return (
     <section className="flow-card">
@@ -277,7 +290,19 @@ function SurveyStep({ form, onChange, onSubmit }) {
   );
 }
 
-function ReadyState({ page, profile, isEnabled, onToggle }) {
+function ReadyState({
+  pageContext,
+  profile,
+  isEnabled,
+  onToggle,
+  onAnalyze,
+  isAnalyzing,
+  analysis,
+  analysisError
+}) {
+  const pageTitle = pageContext?.title || "—";
+  const articleSnippet = truncateText(pageContext?.text, 140);
+
   return (
     <>
       <header className="panel-header">
@@ -310,8 +335,25 @@ function ReadyState({ page, profile, isEnabled, onToggle }) {
       <main className="panel-content">
         <div className="page-context">
           <div className="context-label">Current page</div>
-          <div className="context-title">{page.title || "Current article"}</div>
-          <div className="context-url">{page.url}</div>
+          <div className="context-title">{pageTitle}</div>
+          <div className="context-url">{pageContext?.url || "—"}</div>
+        </div>
+
+        <div className="page-context">
+          <div className="context-label">Current article</div>
+          <div className="context-title">{articleSnippet}</div>
+          <div className="context-url">
+            {pageContext ? "Ready to analyze." : "Waiting for page context..."}
+          </div>
+          <button
+            className="primary-button analyze-button"
+            type="button"
+            onClick={onAnalyze}
+            disabled={isAnalyzing || !pageContext}
+          >
+            {isAnalyzing ? "Analyzing with AI..." : "Analyze this study"}
+          </button>
+          {analysisError ? <p className="analysis-error">{analysisError}</p> : null}
         </div>
 
         <div className="profile-summary">
@@ -334,20 +376,54 @@ function ReadyState({ page, profile, isEnabled, onToggle }) {
           </div>
         </div>
 
-        <article className="insight-card">
-          <div className="relevance-pill">High relevance · PCOS</div>
-          <p className="insight-copy">
-            This study focuses on insulin resistance in women with PCOS ages
-            18-35 directly relevant to your profile.
-          </p>
-          <div className="tag-row">
-            {tags.map((tag) => (
-              <span className="tag" key={tag}>
-                {tag}
-              </span>
-            ))}
-          </div>
-        </article>
+        {analysis ? (
+          <article className="insight-card">
+            <div className="context-label">This study focuses on...</div>
+            <p className="insight-copy">{analysis.summary}</p>
+
+            <div className="analysis-section">
+              <h3>What this means for women</h3>
+              <ul>
+                {(analysis.womenSections || []).map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="analysis-section">
+              <h3>Bias notes</h3>
+              <ul>
+                {(analysis.biasNotes || []).map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="analysis-section">
+              <h3>Follow-up questions</h3>
+              <ul>
+                {(analysis.followUpQuestions || []).map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          </article>
+        ) : (
+          <article className="insight-card">
+            <div className="relevance-pill">High relevance · PCOS</div>
+            <p className="insight-copy">
+              This study focuses on insulin resistance in women with PCOS ages
+              18-35 directly relevant to your profile.
+            </p>
+            <div className="tag-row">
+              {tags.map((tag) => (
+                <span className="tag" key={tag}>
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </article>
+        )}
       </main>
 
       <footer className="panel-footer">
@@ -378,11 +454,12 @@ function ReadyState({ page, profile, isEnabled, onToggle }) {
 
 export function LumaSidePanel() {
   const [isEnabled, setIsEnabled] = useState(true);
-  const [page, setPage] = useState({
-    title: "Current article",
-    url: "Waiting for page context..."
-  });
+  const [pageContext, setPageContext] = useState(null);
   const [profile, setProfile] = useState(initialProfile);
+  const [userProfile, setUserProfile] = useState(null);
+  const [analysis, setAnalysis] = useState(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState("");
   const [auth, setAuth] = useState({
     hasAccount: false,
     emailVerified: false,
@@ -408,8 +485,8 @@ export function LumaSidePanel() {
         setIsEnabled(result.lumaEnabled);
       }
 
-      if (result.lumaLastPage) {
-        setPage(result.lumaLastPage);
+      if (result.lumaLastPage?.text) {
+        setPageContext(result.lumaLastPage);
       }
 
       if (result.lumaAuth) {
@@ -417,7 +494,9 @@ export function LumaSidePanel() {
       }
 
       if (result.lumaProfile) {
-        setProfile({ ...initialProfile, ...result.lumaProfile });
+        const hydratedProfile = { ...initialProfile, ...result.lumaProfile };
+        setProfile(hydratedProfile);
+        setUserProfile(hydratedProfile);
       }
     }
 
@@ -425,6 +504,20 @@ export function LumaSidePanel() {
 
     return () => {
       isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    function handleRuntimeMessage(message) {
+      if (message?.type === "PAGE_CONTEXT" && message.payload) {
+        setPageContext(message.payload);
+      }
+    }
+
+    chrome.runtime.onMessage.addListener(handleRuntimeMessage);
+
+    return () => {
+      chrome.runtime.onMessage.removeListener(handleRuntimeMessage);
     };
   }, []);
 
@@ -483,10 +576,50 @@ export function LumaSidePanel() {
       lumaAuth: nextAuth,
       lumaProfile: profile
     });
+    setUserProfile(profile);
   };
 
-  const onboardingComplete =
-    auth.hasAccount && auth.emailVerified && auth.surveyCompleted;
+  const handleAnalyze = async () => {
+    if (!pageContext || !userProfile) {
+      setAnalysisError("Page context and user profile are required before analysis.");
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setAnalysisError("");
+
+    try {
+      const response = await fetch(
+        "https://YOUR-VULTR-SERVER/summarize-article",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            articleText: pageContext.text,
+            url: pageContext.url,
+            title: pageContext.title,
+            userProfile
+          })
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Backend request failed: ${response.status}`);
+      }
+
+      const payload = await response.json();
+      setAnalysis(payload);
+    } catch (error) {
+      setAnalysisError(error.message || "Could not analyze this study right now.");
+      setAnalysis(null);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const onboardingComplete = Boolean(userProfile);
 
   return (
     <div className="panel-shell">
@@ -494,8 +627,12 @@ export function LumaSidePanel() {
         <ReadyState
           isEnabled={isEnabled}
           onToggle={handleToggle}
-          page={page}
+          pageContext={pageContext}
           profile={profile}
+          onAnalyze={handleAnalyze}
+          isAnalyzing={isAnalyzing}
+          analysis={analysis}
+          analysisError={analysisError}
         />
       ) : (
         <main className="panel-auth">

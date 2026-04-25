@@ -153,6 +153,11 @@ textarea {
   cursor: pointer;
 }
 
+.primary-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .verification-note {
   margin-bottom: 16px;
   padding: 14px 16px;
@@ -343,6 +348,34 @@ textarea {
   font-size: 1.1rem;
   line-height: 1.68;
   letter-spacing: -0.015em;
+}
+
+.analyze-button {
+  margin-top: 14px;
+  width: 100%;
+}
+
+.analysis-error {
+  margin: 10px 0 0;
+  color: #b23a3a;
+  font-size: 0.88rem;
+}
+
+.analysis-section {
+  margin-top: 16px;
+}
+
+.analysis-section h3 {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+}
+
+.analysis-section ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #5d564f;
+  display: grid;
+  gap: 6px;
 }
 
 .tag-row {
