@@ -288,6 +288,33 @@ textarea {
   letter-spacing: 0.14em;
 }
 
+.mode-label {
+  margin-top: 14px;
+}
+
+.mode-toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.mode-chip {
+  border: 1px solid rgba(214, 208, 200, 0.92);
+  background: #fff;
+  color: #6d665f;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.mode-chip.is-active {
+  border-color: var(--accent);
+  color: #fff;
+  background: var(--accent);
+}
+
 .context-title {
   font-size: 0.98rem;
   font-weight: 700;
@@ -366,16 +393,48 @@ textarea {
 }
 
 .analysis-section h3 {
-  margin: 0 0 8px;
+  margin: 0 0 10px;
   font-size: 0.95rem;
+  color: #4f4a43;
 }
 
-.analysis-section ul {
+.analysis-chip-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.analysis-chip {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(214, 208, 200, 0.92);
+  background: rgba(255, 255, 255, 0.9);
+  color: #5d564f;
+  line-height: 1.45;
+  font-size: 0.9rem;
+}
+
+.analysis-chip-warn {
+  background: #fff8f2;
+  border-color: #f0d7b8;
+}
+
+.analysis-empty {
+  margin: 0;
+  color: #857f77;
+  font-size: 0.9rem;
+}
+
+.question-list {
   margin: 0;
   padding-left: 18px;
   color: #5d564f;
   display: grid;
-  gap: 6px;
+  gap: 8px;
+}
+
+.question-list li {
+  line-height: 1.45;
 }
 
 .tag-row {
