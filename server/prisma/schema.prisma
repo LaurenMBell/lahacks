@@ -1,0 +1,45 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String                  @id @default(cuid())
+  email              String                  @unique
+  fullName           String
+  passwordHash       String
+  emailVerified      Boolean                 @default(false)
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+  medicalProfile     MedicalProfile?
+  verificationTokens EmailVerificationToken[]
+}
+
+model EmailVerificationToken {
+  id         String   @id @default(cuid())
+  token      String   @unique
+  userId     String
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model MedicalProfile {
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  ageRange           String?
+  sexAssignedAtBirth String?
+  conditions         String?
+  medications        String?
+  goals              String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

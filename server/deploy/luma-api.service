@@ -1,0 +1,15 @@
+[Unit]
+Description=Luma API
+After=network.target
+
+[Service]
+Type=simple
+User=luma
+WorkingDirectory=/var/www/luma/server
+EnvironmentFile=/var/www/luma/server/.env
+ExecStart=/usr/bin/node /var/www/luma/server/src/index.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -18,6 +18,7 @@ React-based Chrome extension scaffold for the Luma side panel.
 - Background service worker that opens the side panel from the toolbar icon
 - Content script placeholder that stores the current page title and URL for the panel
 - Local onboarding flow with signup, demo verification step, and stored health survey
+- Backend scaffold in `server/` for Vultr VM + Managed PostgreSQL
 
 ## Current onboarding implementation
 
@@ -37,3 +38,15 @@ Real email verification needs:
 - A persistent database if you want the account and survey data available across devices
 
 Good next options would be Firebase Auth, Supabase Auth, Clerk, or a custom backend.
+
+## Vultr backend scaffold
+
+The repository now includes a backend in `server/` with:
+
+- email/password signup
+- email verification tokens
+- login with JWT
+- onboarding survey storage
+- Prisma schema for PostgreSQL
+
+This is the path to use if you want to host your own backend on a small Vultr VM with Vultr Managed PostgreSQL.
