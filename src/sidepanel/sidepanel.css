@@ -195,7 +195,7 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  min-width: 56px;
+  gap: 10px;
 }
 
 .toggle {
@@ -222,6 +222,17 @@ textarea {
   border-radius: 50%;
   background: #fff;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
+.logout-button {
+  border: 1px solid rgba(214, 208, 200, 0.92);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #7a736b;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .status {
