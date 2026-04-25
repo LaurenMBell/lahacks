@@ -1,10 +1,8 @@
 import { useEffect, useState } from "react";
 
-const languageModes = [
-  { id: "plain", label: "Plain language" },
-  { id: "clinical", label: "Clinical language" },
-  { id: "doctorPrep", label: "Doctor prep" }
-];
+const tags = ["Study: women only", "Ages 18-40", "N=200"];
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:3001";
 const initialProfile = {
   email: "",
   fullName: "",
@@ -34,6 +32,30 @@ function storageSet(value) {
   });
 }
 
+async function apiRequest(path, { method = "GET", body, token } = {}) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+
+  const contentType = response.headers.get("content-type") || "";
+  const payload = contentType.includes("application/json")
+    ? await response.json()
+    : await response.text();
+
+  if (!response.ok) {
+    const message =
+      typeof payload === "string" ? payload : payload?.error || "Request failed";
+    throw new Error(message);
+  }
+
+  return payload;
+}
+
 function truncateText(text, maxLength = 140) {
   if (!text) {
     return "—";
@@ -47,45 +69,16 @@ function truncateText(text, maxLength = 140) {
   return `${trimmed.slice(0, maxLength).trimEnd()}...`;
 }
 
-function ensureArray(value, fallback = []) {
-  return Array.isArray(value) ? value : fallback;
-}
-
-function extractDemographicChips(analysis, profile) {
-  const sourceText = [
-    analysis?.summary || "",
-    ...ensureArray(analysis?.womenSections),
-    ...ensureArray(analysis?.biasNotes)
-  ]
-    .join(" ")
-    .toLowerCase();
-
-  const chips = [];
-
-  const ageRangeMatch = sourceText.match(/(\d{1,2})\s*[-to]{1,3}\s*(\d{1,2})/);
-  if (ageRangeMatch) {
-    chips.push(`Ages ${ageRangeMatch[1]}-${ageRangeMatch[2]}`);
-  } else if (profile?.ageRange) {
-    chips.push(`User age range: ${profile.ageRange}`);
-  }
-
-  if (/\bpcos\b/.test(sourceText)) chips.push("PCOS focus");
-  if (/\bpregnan|postpartum|menopause|menopausal\b/.test(sourceText)) {
-    chips.push("Hormonal/life-stage focus");
-  }
-  if (/\bwomen|female|sex differences?\b/.test(sourceText)) {
-    chips.push("Women-specific evidence");
-  } else {
-    chips.push("General population study");
-  }
-
-  const sampleMatch = sourceText.match(/\bn\s*=\s*(\d{2,6})\b/);
-  if (sampleMatch) chips.push(`Sample size: ${sampleMatch[1]}`);
-
-  return chips.slice(0, 5);
-}
-
-function SignupStep({ form, onChange, onSubmit }) {
+function SignupStep({
+  form,
+  password,
+  onPasswordChange,
+  onChange,
+  onSubmit,
+  onSwitchToSignIn,
+  isSubmitting,
+  error
+}) {
   return (
     <section className="flow-card">
       <div className="flow-eyebrow">Create account</div>
@@ -120,37 +113,99 @@ function SignupStep({ form, onChange, onSubmit }) {
           />
         </label>
 
+        <label className="field">
+          <span>Password</span>
+          <input
+            name="password"
+            type="password"
+            value={password}
+            onChange={onPasswordChange}
+            placeholder="At least 8 characters"
+            minLength={8}
+            required
+          />
+        </label>
+
+        {error ? <p className="analysis-error">{error}</p> : null}
+
         <button className="primary-button" type="submit">
-          Continue to verification
+          {isSubmitting ? "Creating account..." : "Continue to verification"}
+        </button>
+        <button className="primary-button" type="button" onClick={onSwitchToSignIn}>
+          Already have an account? Sign in
         </button>
       </form>
     </section>
   );
 }
 
-function VerificationStep({ email, onVerify }) {
+function VerificationStep({
+  email,
+  onEmailChange,
+  password,
+  onPasswordChange,
+  onLogin,
+  onBackToSignup,
+  isSubmitting,
+  error,
+  verificationUrl
+}) {
   return (
     <section className="flow-card">
       <div className="flow-eyebrow">Verification</div>
       <h2 className="flow-title">Verify your email</h2>
       <p className="flow-copy">
-        A real verification email cannot be sent from this extension alone.
-        Email delivery and secure token validation require hosted infrastructure
-        or an auth provider.
+        We sent a verification link to your email. After confirming it, come back
+        here and sign in to continue onboarding.
       </p>
 
       <div className="verification-note">
         <strong>Prepared for:</strong> {email}
       </div>
 
-      <p className="flow-copy flow-copy-small">
-        For now, this demo step lets us keep building the rest of the onboarding
-        flow and store the verified state locally.
-      </p>
+      {verificationUrl ? (
+        <div className="verification-note">
+          <strong>Dev mode verification link:</strong>{" "}
+          <a href={verificationUrl} target="_blank" rel="noreferrer">
+            Open verification link
+          </a>
+        </div>
+      ) : null}
 
-      <button className="primary-button" type="button" onClick={onVerify}>
-        Mark email as verified for local demo
-      </button>
+      <form className="flow-form" onSubmit={onLogin}>
+        <label className="field">
+          <span>Email</span>
+          <input
+            name="email"
+            type="email"
+            value={email}
+            onChange={onEmailChange}
+            placeholder="you@example.com"
+            required
+          />
+        </label>
+
+        <label className="field">
+          <span>Password</span>
+          <input
+            name="password"
+            type="password"
+            value={password}
+            onChange={onPasswordChange}
+            placeholder="Enter your password"
+            required
+          />
+        </label>
+
+        {error ? <p className="analysis-error">{error}</p> : null}
+
+        <button className="primary-button" type="submit">
+          {isSubmitting ? "Signing in..." : "I've verified, sign in"}
+        </button>
+        <button className="primary-button" type="button" onClick={onBackToSignup}>
+          Use a different email
+        </button>
+      </form>
     </section>
   );
 }
@@ -187,6 +242,7 @@ function SurveyStep({ form, onChange, onSubmit }) {
             value={form.weight}
             onChange={onChange}
             placeholder="e.g. 140 lb"
+            required
           />
         </label>
 
@@ -214,6 +270,7 @@ function SurveyStep({ form, onChange, onSubmit }) {
             value={form.gender}
             onChange={onChange}
             placeholder="Woman, non-binary, etc."
+            required
           />
         </label>
 
@@ -236,6 +293,7 @@ function SurveyStep({ form, onChange, onSubmit }) {
             onChange={onChange}
             multiple
             aria-label="Substance use (multi-select)"
+            required
           >
             <option value="Alcohol">Alcohol</option>
             <option value="Nicotine">Nicotine</option>
@@ -267,6 +325,7 @@ function SurveyStep({ form, onChange, onSubmit }) {
             onChange={onChange}
             multiple
             aria-label="Dietary restrictions (multi-select)"
+            required
           >
             <option value="Vegetarian">Vegetarian</option>
             <option value="Vegan">Vegan</option>
@@ -332,7 +391,14 @@ function SurveyStep({ form, onChange, onSubmit }) {
   );
 }
 
-function ProfileModal({ form, onChange, onSave, onClose }) {
+function ProfileModal({
+  form,
+  onChange,
+  onSave,
+  onClose,
+  isSaving,
+  error
+}) {
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Edit profile">
       <div className="modal-card">
@@ -346,17 +412,17 @@ function ProfileModal({ form, onChange, onSave, onClose }) {
         <form className="flow-form modal-form" onSubmit={onSave}>
           <label className="field">
             <span>Full name</span>
-            <input name="fullName" type="text" value={form.fullName} onChange={onChange} />
+            <input name="fullName" type="text" value={form.fullName} onChange={onChange} required />
           </label>
 
           <label className="field">
             <span>Email</span>
-            <input name="email" type="email" value={form.email} onChange={onChange} />
+            <input name="email" type="email" value={form.email} onChange={onChange} required />
           </label>
 
           <label className="field">
             <span>Age range</span>
-            <select name="ageRange" value={form.ageRange} onChange={onChange}>
+            <select name="ageRange" value={form.ageRange} onChange={onChange} required>
               <option value="">Select age range</option>
               <option value="Under 18">Under 18</option>
               <option value="18-24">18-24</option>
@@ -369,7 +435,7 @@ function ProfileModal({ form, onChange, onSave, onClose }) {
 
           <label className="field">
             <span>Sex assigned at birth</span>
-            <select name="sexAssignedAtBirth" value={form.sexAssignedAtBirth} onChange={onChange}>
+            <select name="sexAssignedAtBirth" value={form.sexAssignedAtBirth} onChange={onChange} required>
               <option value="">Select option</option>
               <option value="Female">Female</option>
               <option value="Male">Male</option>
@@ -398,12 +464,14 @@ function ProfileModal({ form, onChange, onSave, onClose }) {
             <textarea name="goals" value={form.goals} onChange={onChange} rows="3" />
           </label>
 
+          {error ? <p className="analysis-error">{error}</p> : null}
+
           <div className="modal-actions">
             <button type="button" className="secondary-button" onClick={onClose}>
               Cancel
             </button>
-            <button className="primary-button" type="submit">
-              Save profile
+            <button className="primary-button" type="submit" disabled={isSaving}>
+              {isSaving ? "Saving..." : "Save profile"}
             </button>
           </div>
         </form>
@@ -417,13 +485,12 @@ function ReadyState({
   profile,
   isEnabled,
   onToggle,
+  onLogout,
+  onOpenProfile,
   onAnalyze,
   isAnalyzing,
   analysis,
-  analysisError,
-  languageMode,
-  onLanguageModeChange,
-  onOpenProfile
+  analysisError
 }) {
   const pageTitle = pageContext?.title || "—";
   const articleSnippet = truncateText(pageContext?.text, 140);
@@ -441,6 +508,9 @@ function ReadyState({
               onClick={onToggle}
             >
               <span className="toggle-thumb"></span>
+            </button>
+            <button className="logout-button" type="button" onClick={onLogout}>
+              Sign out
             </button>
             <button
               className="profile-button"
@@ -480,20 +550,6 @@ function ReadyState({
           <div className="context-url">
             {pageContext ? "Ready to analyze." : "Waiting for page context..."}
           </div>
-          <div className="context-label mode-label">Accessibility mode</div>
-          <div className="mode-toggle-row">
-            {languageModes.map((mode) => (
-              <button
-                key={mode.id}
-                type="button"
-                className={`mode-chip ${languageMode === mode.id ? "is-active" : ""}`}
-                onClick={() => onLanguageModeChange(mode.id)}
-                aria-pressed={languageMode === mode.id}
-              >
-                {mode.label}
-              </button>
-            ))}
-          </div>
           <button
             className="primary-button analyze-button"
             type="button"
@@ -507,84 +563,50 @@ function ReadyState({
 
         {analysis ? (
           <article className="insight-card">
-            <div className="context-label">Target demographic</div>
-            <div className="analysis-chip-grid">
-              {extractDemographicChips(analysis, profile).map((chip, index) => (
-                <p className="analysis-chip analysis-chip-strong" key={`demographic-${index}-${chip}`}>
-                  {chip}
-                </p>
-              ))}
+            <div className="context-label">This study focuses on...</div>
+            <p className="insight-copy">{analysis.summary}</p>
+
+            <div className="analysis-section">
+              <h3>What this means for women</h3>
+              <ul>
+                {(analysis.womenSections || []).map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
             </div>
 
             <div className="analysis-section">
-              <h3>
-                <strong>Quick summary</strong>
-              </h3>
-              <p className="analysis-summary">{analysis.summary}</p>
+              <h3>Bias notes</h3>
+              <ul>
+                {(analysis.biasNotes || []).map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
             </div>
 
             <div className="analysis-section">
-              <h3>
-                <strong>What this means for women</strong>
-              </h3>
-              <div className="analysis-chip-grid">
-                {ensureArray(analysis.womenSections).length > 0 ? (
-                  ensureArray(analysis.womenSections).map((item, index) => (
-                    <p className="analysis-chip" key={`women-${index}-${item}`}>
-                      {item}
-                    </p>
-                  ))
-                ) : (
-                  <p className="analysis-empty">
-                    No women-specific takeaways were detected yet.
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="analysis-section">
-              <h3>
-                <strong>Bias notes</strong>
-              </h3>
-              <div className="analysis-chip-grid">
-                {ensureArray(analysis.biasNotes).length > 0 ? (
-                  ensureArray(analysis.biasNotes).map((item, index) => (
-                    <p className="analysis-chip analysis-chip-warn" key={`bias-${index}-${item}`}>
-                      {item}
-                    </p>
-                  ))
-                ) : (
-                  <p className="analysis-empty">
-                    No clear bias signal found in this article summary.
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="analysis-section">
-              <h3>
-                <strong>Follow-up questions</strong>
-              </h3>
-              <ul className="question-list">
-                {ensureArray(analysis.followUpQuestions).length > 0 ? (
-                  ensureArray(analysis.followUpQuestions).map((item, index) => (
-                    <li key={`question-${index}-${item}`}>{item}</li>
-                  ))
-                ) : (
-                  <li>
-                    Ask your doctor: "How does this study apply to my health
-                    profile?"
-                  </li>
-                )}
+              <h3>Follow-up questions</h3>
+              <ul>
+                {(analysis.followUpQuestions || []).map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
               </ul>
             </div>
           </article>
         ) : (
           <article className="insight-card">
-            <div className="context-label">Analysis preview</div>
-            <p className="analysis-empty">
-              Run analysis to see target demographic chips and women-specific takeaways.
+            <div className="relevance-pill">High relevance · PCOS</div>
+            <p className="insight-copy">
+              This study focuses on insulin resistance in women with PCOS ages
+              18-35 directly relevant to your profile.
             </p>
+            <div className="tag-row">
+              {tags.map((tag) => (
+                <span className="tag" key={tag}>
+                  {tag}
+                </span>
+              ))}
+            </div>
           </article>
         )}
       </main>
@@ -620,12 +642,18 @@ export function LumaSidePanel() {
   const [pageContext, setPageContext] = useState(null);
   const [profile, setProfile] = useState(initialProfile);
   const [userProfile, setUserProfile] = useState(null);
+  const [authToken, setAuthToken] = useState("");
+  const [password, setPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [verificationUrl, setVerificationUrl] = useState("");
+  const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
   const [analysis, setAnalysis] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
-  const [languageMode, setLanguageMode] = useState("plain");
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [draftProfile, setDraftProfile] = useState(initialProfile);
+  const [profileSaveError, setProfileSaveError] = useState("");
+  const [isProfileSaving, setIsProfileSaving] = useState(false);
   const [auth, setAuth] = useState({
     hasAccount: false,
     emailVerified: false,
@@ -641,8 +669,7 @@ export function LumaSidePanel() {
         "lumaLastPage",
         "lumaAuth",
         "lumaProfile",
-        "userProfile",
-        "lumaLanguageMode"
+        "lumaToken"
       ]);
 
       if (!isMounted) {
@@ -661,15 +688,38 @@ export function LumaSidePanel() {
         setAuth(result.lumaAuth);
       }
 
-      const storedProfile = result.userProfile || result.lumaProfile;
-      if (storedProfile) {
-        const hydratedProfile = { ...initialProfile, ...storedProfile };
+      if (result.lumaProfile) {
+        const hydratedProfile = { ...initialProfile, ...result.lumaProfile };
         setProfile(hydratedProfile);
-        setUserProfile(hydratedProfile);
       }
 
-      if (result.lumaLanguageMode && typeof result.lumaLanguageMode === "string") {
-        setLanguageMode(result.lumaLanguageMode);
+      if (result.lumaToken) {
+        try {
+          const me = await apiRequest("/profile/me", {
+            token: result.lumaToken
+          });
+          const hydratedProfile = {
+            ...initialProfile,
+            email: me.user.email,
+            fullName: me.user.fullName,
+            ...(me.medicalProfile || {})
+          };
+          setAuthToken(result.lumaToken);
+          setProfile(hydratedProfile);
+          if (me.medicalProfile) {
+            setUserProfile(hydratedProfile);
+          } else {
+            setUserProfile(null);
+          }
+          setAuth({
+            hasAccount: true,
+            emailVerified: me.user.emailVerified,
+            surveyCompleted: Boolean(me.medicalProfile)
+          });
+        } catch (_error) {
+          setUserProfile(null);
+          await storageSet({ lumaToken: "" });
+        }
       }
     }
 
@@ -711,45 +761,184 @@ export function LumaSidePanel() {
     setProfile((current) => ({ ...current, [name]: nextValue }));
   };
 
+  const handlePasswordChange = (event) => {
+    setPassword(event.target.value);
+  };
+
   const handleSignup = async (event) => {
     event.preventDefault();
+    setAuthError("");
+    setVerificationUrl("");
+    setIsAuthSubmitting(true);
+    try {
+      const payload = await apiRequest("/auth/signup", {
+        method: "POST",
+        body: {
+          email: profile.email,
+          fullName: profile.fullName,
+          password
+        }
+      });
+
+      if (payload?.verificationPreviewUrl) {
+        setVerificationUrl(payload.verificationPreviewUrl);
+      }
+
+      const nextAuth = {
+        hasAccount: true,
+        emailVerified: false,
+        surveyCompleted: false
+      };
+      setAuth(nextAuth);
+      await storageSet({
+        lumaAuth: nextAuth,
+        lumaProfile: profile
+      });
+    } catch (error) {
+      const message = error.message || "Could not create account.";
+      if (message.toLowerCase().includes("email already in use")) {
+        const nextAuth = {
+          hasAccount: true,
+          emailVerified: false,
+          surveyCompleted: false
+        };
+        setAuth(nextAuth);
+        await storageSet({
+          lumaAuth: nextAuth,
+          lumaProfile: profile
+        });
+        setAuthError("Account already exists. Sign in with your password below.");
+      } else {
+        setAuthError(message);
+      }
+    } finally {
+      setIsAuthSubmitting(false);
+    }
+  };
+
+  const handleLoginAfterVerification = async (event) => {
+    event.preventDefault();
+    setAuthError("");
+    setIsAuthSubmitting(true);
+    try {
+      const payload = await apiRequest("/auth/login", {
+        method: "POST",
+        body: {
+          email: profile.email,
+          password
+        }
+      });
+
+      const token = payload.token;
+      const nextAuth = {
+        hasAccount: true,
+        emailVerified: true,
+        surveyCompleted: Boolean(payload.user.medicalProfile)
+      };
+      const hydratedProfile = {
+        ...initialProfile,
+        email: payload.user.email,
+        fullName: payload.user.fullName,
+        ...(payload.user.medicalProfile || {})
+      };
+
+      setAuthToken(token);
+      setAuth(nextAuth);
+      setProfile(hydratedProfile);
+      if (payload.user.medicalProfile) {
+        setUserProfile(hydratedProfile);
+      }
+      await storageSet({
+        lumaToken: token,
+        lumaAuth: nextAuth,
+        lumaProfile: hydratedProfile
+      });
+    } catch (error) {
+      setAuthError(error.message || "Could not sign in.");
+    } finally {
+      setIsAuthSubmitting(false);
+    }
+  };
+
+  const handleBackToSignup = async () => {
+    const nextAuth = {
+      hasAccount: false,
+      emailVerified: false,
+      surveyCompleted: false
+    };
+    setAuthError("");
+    setVerificationUrl("");
+    setAuth(nextAuth);
+    await storageSet({ lumaAuth: nextAuth });
+  };
+
+  const handleSwitchToSignIn = async () => {
     const nextAuth = {
       hasAccount: true,
       emailVerified: false,
       surveyCompleted: false
     };
-
+    setAuthError("");
+    setVerificationUrl("");
     setAuth(nextAuth);
     await storageSet({
       lumaAuth: nextAuth,
       lumaProfile: profile
     });
-  };
-
-  const handleVerify = async () => {
-    const nextAuth = {
-      ...auth,
-      emailVerified: true
-    };
-
-    setAuth(nextAuth);
-    await storageSet({ lumaAuth: nextAuth });
   };
 
   const handleSurveySubmit = async (event) => {
     event.preventDefault();
 
-    const nextAuth = {
-      ...auth,
-      surveyCompleted: true
-    };
+    if (!authToken) {
+      setAuthError("Please sign in again to save onboarding.");
+      return;
+    }
 
-    setAuth(nextAuth);
-    await storageSet({
-      lumaAuth: nextAuth,
-      lumaProfile: profile
-    });
-    setUserProfile(profile);
+    setAuthError("");
+    setIsAuthSubmitting(true);
+    try {
+      const payload = await apiRequest("/profile/onboarding", {
+        method: "POST",
+        token: authToken,
+        body: {
+          ageRange: profile.ageRange,
+          weight: profile.weight,
+          sexAssignedAtBirth: profile.sexAssignedAtBirth,
+          gender: profile.gender,
+          familyMedicalHistory: profile.familyMedicalHistory || null,
+          substanceUse: profile.substanceUse,
+          substanceUseOther: profile.substanceUseOther || null,
+          dietaryRestrictions: profile.dietaryRestrictions,
+          dietaryRestrictionsOther: profile.dietaryRestrictionsOther || null,
+          conditions: profile.conditions || null,
+          medications: profile.medications || null,
+          goals: profile.goals || null
+        }
+      });
+
+      const nextAuth = {
+        ...auth,
+        surveyCompleted: true
+      };
+      const hydratedProfile = {
+        ...initialProfile,
+        email: profile.email,
+        fullName: profile.fullName,
+        ...payload.medicalProfile
+      };
+      setAuth(nextAuth);
+      setProfile(hydratedProfile);
+      setUserProfile(hydratedProfile);
+      await storageSet({
+        lumaAuth: nextAuth,
+        lumaProfile: hydratedProfile
+      });
+    } catch (error) {
+      setAuthError(error.message || "Could not save onboarding.");
+    } finally {
+      setIsAuthSubmitting(false);
+    }
   };
 
   const handleAnalyze = async () => {
@@ -763,18 +952,17 @@ export function LumaSidePanel() {
 
     try {
       const response = await fetch(
-        "http://localhost:4000/summarize-article",
+        "https://YOUR-VULTR-SERVER/summarize-article",
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            articleText: pageContext.text.slice(0, 8000),
+            articleText: pageContext.text,
             url: pageContext.url,
             title: pageContext.title,
-            userProfile,
-            languageMode
+            userProfile
           })
         }
       );
@@ -793,12 +981,8 @@ export function LumaSidePanel() {
     }
   };
 
-  const handleLanguageModeChange = async (modeId) => {
-    setLanguageMode(modeId);
-    await storageSet({ lumaLanguageMode: modeId });
-  };
-
   const handleOpenProfileModal = () => {
+    setProfileSaveError("");
     setDraftProfile(profile);
     setIsProfileModalOpen(true);
   };
@@ -810,31 +994,86 @@ export function LumaSidePanel() {
 
   const handleSaveProfile = async (event) => {
     event.preventDefault();
-    setProfile(draftProfile);
-    setUserProfile(draftProfile);
-    await storageSet({
-      lumaProfile: draftProfile,
-      userProfile: draftProfile
-    });
-    try {
-      await fetch("http://localhost:4000/profile/send-update-email", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          email: draftProfile.email,
-          fullName: draftProfile.fullName
-        })
-      });
-    } catch (error) {
-      // Profile saving should not fail if email delivery is unavailable.
-      console.warn("Profile saved but email notification failed.", error);
+    if (!authToken) {
+      setProfileSaveError("Please sign in again to save your profile.");
+      return;
     }
-    setIsProfileModalOpen(false);
+
+    setIsProfileSaving(true);
+    setProfileSaveError("");
+    try {
+      const payload = await apiRequest("/profile/onboarding", {
+        method: "POST",
+        token: authToken,
+        body: {
+          ageRange: draftProfile.ageRange,
+          weight: draftProfile.weight,
+          sexAssignedAtBirth: draftProfile.sexAssignedAtBirth,
+          gender: draftProfile.gender,
+          familyMedicalHistory: draftProfile.familyMedicalHistory || null,
+          substanceUse: draftProfile.substanceUse,
+          substanceUseOther: draftProfile.substanceUseOther || null,
+          dietaryRestrictions: draftProfile.dietaryRestrictions,
+          dietaryRestrictionsOther: draftProfile.dietaryRestrictionsOther || null,
+          conditions: draftProfile.conditions || null,
+          medications: draftProfile.medications || null,
+          goals: draftProfile.goals || null
+        }
+      });
+
+      const hydratedProfile = {
+        ...initialProfile,
+        email: draftProfile.email,
+        fullName: draftProfile.fullName,
+        ...payload.medicalProfile
+      };
+      setProfile(hydratedProfile);
+      setUserProfile(hydratedProfile);
+      await storageSet({ lumaProfile: hydratedProfile });
+
+      try {
+        await apiRequest("/profile/send-update-email", {
+          method: "POST",
+          token: authToken,
+          body: {
+            email: hydratedProfile.email,
+            fullName: hydratedProfile.fullName
+          }
+        });
+      } catch (_emailError) {
+        // Save success should not fail if email endpoint is unavailable.
+      }
+
+      setIsProfileModalOpen(false);
+    } catch (error) {
+      setProfileSaveError(error.message || "Could not save profile.");
+    } finally {
+      setIsProfileSaving(false);
+    }
   };
 
-  const onboardingComplete = Boolean(userProfile);
+  const handleLogout = async () => {
+    const clearedAuth = {
+      hasAccount: false,
+      emailVerified: false,
+      surveyCompleted: false
+    };
+    setAuthToken("");
+    setUserProfile(null);
+    setPassword("");
+    setVerificationUrl("");
+    setAuthError("");
+    setAnalysis(null);
+    setAnalysisError("");
+    setAuth(clearedAuth);
+    await storageSet({
+      lumaToken: "",
+      lumaAuth: clearedAuth,
+      lumaProfile: ""
+    });
+  };
+
+  const onboardingComplete = auth.emailVerified && auth.surveyCompleted;
 
   return (
     <div className="panel-shell">
@@ -842,15 +1081,14 @@ export function LumaSidePanel() {
         <ReadyState
           isEnabled={isEnabled}
           onToggle={handleToggle}
+          onLogout={handleLogout}
+          onOpenProfile={handleOpenProfileModal}
           pageContext={pageContext}
           profile={profile}
           onAnalyze={handleAnalyze}
           isAnalyzing={isAnalyzing}
           analysis={analysis}
           analysisError={analysisError}
-          languageMode={languageMode}
-          onLanguageModeChange={handleLanguageModeChange}
-          onOpenProfile={handleOpenProfileModal}
         />
       ) : (
         <main className="panel-auth">
@@ -865,13 +1103,28 @@ export function LumaSidePanel() {
           {!auth.hasAccount ? (
             <SignupStep
               form={profile}
+              password={password}
+              onPasswordChange={handlePasswordChange}
               onChange={handleFieldChange}
               onSubmit={handleSignup}
+              onSwitchToSignIn={handleSwitchToSignIn}
+              isSubmitting={isAuthSubmitting}
+              error={authError}
             />
           ) : null}
 
           {auth.hasAccount && !auth.emailVerified ? (
-            <VerificationStep email={profile.email} onVerify={handleVerify} />
+            <VerificationStep
+              email={profile.email}
+              onEmailChange={handleFieldChange}
+              password={password}
+              onPasswordChange={handlePasswordChange}
+              onLogin={handleLoginAfterVerification}
+              onBackToSignup={handleBackToSignup}
+              isSubmitting={isAuthSubmitting}
+              error={authError}
+              verificationUrl={verificationUrl}
+            />
           ) : null}
 
           {auth.hasAccount && auth.emailVerified && !auth.surveyCompleted ? (
@@ -889,6 +1142,8 @@ export function LumaSidePanel() {
           onChange={handleDraftProfileChange}
           onSave={handleSaveProfile}
           onClose={() => setIsProfileModalOpen(false)}
+          isSaving={isProfileSaving}
+          error={profileSaveError}
         />
       ) : null}
     </div>

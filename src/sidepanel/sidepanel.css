@@ -196,7 +196,6 @@ textarea {
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
-  min-width: 96px;
 }
 
 .toggle {
@@ -223,6 +222,35 @@ textarea {
   border-radius: 50%;
   background: #fff;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
+.logout-button {
+  border: 1px solid rgba(214, 208, 200, 0.92);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #7a736b;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.profile-button {
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(214, 208, 200, 0.92);
+  background: rgba(245, 163, 148, 0.14);
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: #a76457;
+}
+
+.profile-button svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
 }
 
 .status {
@@ -269,6 +297,14 @@ textarea {
   border: 1px solid rgba(214, 208, 200, 0.65);
   border-radius: 18px;
   background: linear-gradient(180deg, rgba(250, 247, 243, 0.75), rgba(247, 243, 238, 0.6));
+}
+
+.profile-summary {
+  margin-bottom: 18px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(214, 208, 200, 0.65);
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .context-label,
@@ -345,24 +381,6 @@ textarea {
   line-height: 1.4;
 }
 
-.profile-button {
-  width: 38px;
-  height: 38px;
-  border: 1px solid rgba(214, 208, 200, 0.92);
-  background: rgba(245, 163, 148, 0.14);
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  color: #a76457;
-}
-
-.profile-button svg {
-  width: 18px;
-  height: 18px;
-  fill: currentColor;
-}
-
 .insight-card {
   border-radius: 24px;
   border: 1px solid var(--border);
@@ -425,23 +443,9 @@ textarea {
   font-size: 0.9rem;
 }
 
-.analysis-chip-strong {
-  background: var(--accent-soft);
-  border-color: rgba(245, 163, 148, 0.65);
-  color: #7c4a3f;
-  font-weight: 700;
-}
-
 .analysis-chip-warn {
   background: #fff8f2;
   border-color: #f0d7b8;
-}
-
-.analysis-summary {
-  margin: 0;
-  color: #5d564f;
-  line-height: 1.5;
-  font-size: 0.95rem;
 }
 
 .analysis-empty {
