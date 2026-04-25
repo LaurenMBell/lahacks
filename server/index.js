@@ -1,3 +1,4 @@
+import "dotenv/config";
 import cors from "cors";
 import express from "express";
 import fetch from "node-fetch";
@@ -63,6 +64,56 @@ function parseBestEffortFromText(text) {
 
 app.use(cors());
 app.use(express.json());
+
+app.post("/profile/send-update-email", async (req, res) => {
+  try {
+    const { email, fullName } = req.body || {};
+
+    if (!email) {
+      return res.status(400).json({ error: "Missing email" });
+    }
+
+    if (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM) {
+      return res.status(200).json({
+        ok: true,
+        skipped: true,
+        reason: "Email provider not configured."
+      });
+    }
+
+    const recipientName =
+      typeof fullName === "string" && fullName.trim() ? fullName.trim() : "there";
+
+    const emailResponse = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`
+      },
+      body: JSON.stringify({
+        from: process.env.EMAIL_FROM,
+        to: [email],
+        subject: "Your Woman WebMD profile was updated",
+        html: `
+          <p>Hi ${recipientName},</p>
+          <p>Your Woman WebMD profile was successfully updated.</p>
+          <p>If this wasn't you, please update your profile again or contact support.</p>
+        `
+      })
+    });
+
+    if (!emailResponse.ok) {
+      const details = await emailResponse.text();
+      console.error("Email send failed:", details);
+      return res.status(502).json({ error: "Email provider request failed." });
+    }
+
+    return res.status(200).json({ ok: true });
+  } catch (error) {
+    console.error("send-update-email error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 app.post("/summarize-article", async (req, res) => {
   try {

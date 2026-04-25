@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 
-const tags = ["Study: women only", "Ages 18-40", "N=200"];
 const languageModes = [
   { id: "plain", label: "Plain language" },
   { id: "clinical", label: "Clinical language" },
@@ -50,6 +49,40 @@ function truncateText(text, maxLength = 140) {
 
 function ensureArray(value, fallback = []) {
   return Array.isArray(value) ? value : fallback;
+}
+
+function extractDemographicChips(analysis, profile) {
+  const sourceText = [
+    analysis?.summary || "",
+    ...ensureArray(analysis?.womenSections),
+    ...ensureArray(analysis?.biasNotes)
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  const chips = [];
+
+  const ageRangeMatch = sourceText.match(/(\d{1,2})\s*[-to]{1,3}\s*(\d{1,2})/);
+  if (ageRangeMatch) {
+    chips.push(`Ages ${ageRangeMatch[1]}-${ageRangeMatch[2]}`);
+  } else if (profile?.ageRange) {
+    chips.push(`User age range: ${profile.ageRange}`);
+  }
+
+  if (/\bpcos\b/.test(sourceText)) chips.push("PCOS focus");
+  if (/\bpregnan|postpartum|menopause|menopausal\b/.test(sourceText)) {
+    chips.push("Hormonal/life-stage focus");
+  }
+  if (/\bwomen|female|sex differences?\b/.test(sourceText)) {
+    chips.push("Women-specific evidence");
+  } else {
+    chips.push("General population study");
+  }
+
+  const sampleMatch = sourceText.match(/\bn\s*=\s*(\d{2,6})\b/);
+  if (sampleMatch) chips.push(`Sample size: ${sampleMatch[1]}`);
+
+  return chips.slice(0, 5);
 }
 
 function SignupStep({ form, onChange, onSubmit }) {
@@ -299,6 +332,86 @@ function SurveyStep({ form, onChange, onSubmit }) {
   );
 }
 
+function ProfileModal({ form, onChange, onSave, onClose }) {
+  return (
+    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Edit profile">
+      <div className="modal-card">
+        <div className="modal-header">
+          <h2>Your profile</h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Close profile modal">
+            ×
+          </button>
+        </div>
+
+        <form className="flow-form modal-form" onSubmit={onSave}>
+          <label className="field">
+            <span>Full name</span>
+            <input name="fullName" type="text" value={form.fullName} onChange={onChange} />
+          </label>
+
+          <label className="field">
+            <span>Email</span>
+            <input name="email" type="email" value={form.email} onChange={onChange} />
+          </label>
+
+          <label className="field">
+            <span>Age range</span>
+            <select name="ageRange" value={form.ageRange} onChange={onChange}>
+              <option value="">Select age range</option>
+              <option value="Under 18">Under 18</option>
+              <option value="18-24">18-24</option>
+              <option value="25-34">25-34</option>
+              <option value="35-44">35-44</option>
+              <option value="45-54">45-54</option>
+              <option value="55+">55+</option>
+            </select>
+          </label>
+
+          <label className="field">
+            <span>Sex assigned at birth</span>
+            <select name="sexAssignedAtBirth" value={form.sexAssignedAtBirth} onChange={onChange}>
+              <option value="">Select option</option>
+              <option value="Female">Female</option>
+              <option value="Male">Male</option>
+              <option value="Intersex">Intersex</option>
+              <option value="Prefer not to say">Prefer not to say</option>
+            </select>
+          </label>
+
+          <label className="field">
+            <span>Gender</span>
+            <input name="gender" type="text" value={form.gender} onChange={onChange} />
+          </label>
+
+          <label className="field">
+            <span>Relevant conditions</span>
+            <textarea name="conditions" value={form.conditions} onChange={onChange} rows="3" />
+          </label>
+
+          <label className="field">
+            <span>Current medications or supplements</span>
+            <textarea name="medications" value={form.medications} onChange={onChange} rows="3" />
+          </label>
+
+          <label className="field">
+            <span>Main goals</span>
+            <textarea name="goals" value={form.goals} onChange={onChange} rows="3" />
+          </label>
+
+          <div className="modal-actions">
+            <button type="button" className="secondary-button" onClick={onClose}>
+              Cancel
+            </button>
+            <button className="primary-button" type="submit">
+              Save profile
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function ReadyState({
   pageContext,
   profile,
@@ -309,7 +422,8 @@ function ReadyState({
   analysis,
   analysisError,
   languageMode,
-  onLanguageModeChange
+  onLanguageModeChange,
+  onOpenProfile
 }) {
   const pageTitle = pageContext?.title || "—";
   const articleSnippet = truncateText(pageContext?.text, 140);
@@ -329,12 +443,14 @@ function ReadyState({
               <span className="toggle-thumb"></span>
             </button>
             <button
-              className="collapse-button"
+              className="profile-button"
               type="button"
-              aria-label="Collapse panel"
+              aria-label="Edit profile"
+              onClick={onOpenProfile}
             >
-              <span></span>
-              <span></span>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 12.4a5.2 5.2 0 1 0 0-10.4 5.2 5.2 0 0 0 0 10.4Zm0 2.2c-5.1 0-9.2 3-9.2 6.7 0 .4.3.7.7.7h17c.4 0 .7-.3.7-.7 0-3.7-4.1-6.7-9.2-6.7Z" />
+              </svg>
             </button>
           </div>
         </div>
@@ -389,30 +505,23 @@ function ReadyState({
           {analysisError ? <p className="analysis-error">{analysisError}</p> : null}
         </div>
 
-        <div className="profile-summary">
-          <div className="context-label">Saved profile</div>
-          <div className="summary-grid">
-            <div>
-              <span className="summary-key">Email</span>
-              <span className="summary-value">{profile.email}</span>
-            </div>
-            <div>
-              <span className="summary-key">Age range</span>
-              <span className="summary-value">{profile.ageRange || "Not set"}</span>
-            </div>
-            <div>
-              <span className="summary-key">Sex at birth</span>
-              <span className="summary-value">
-                {profile.sexAssignedAtBirth || "Not set"}
-              </span>
-            </div>
-          </div>
-        </div>
-
         {analysis ? (
           <article className="insight-card">
-            <div className="relevance-pill">This study focuses on...</div>
-            <p className="insight-copy">{analysis.summary}</p>
+            <div className="context-label">Target demographic</div>
+            <div className="analysis-chip-grid">
+              {extractDemographicChips(analysis, profile).map((chip, index) => (
+                <p className="analysis-chip analysis-chip-strong" key={`demographic-${index}-${chip}`}>
+                  {chip}
+                </p>
+              ))}
+            </div>
+
+            <div className="analysis-section">
+              <h3>
+                <strong>Quick summary</strong>
+              </h3>
+              <p className="analysis-summary">{analysis.summary}</p>
+            </div>
 
             <div className="analysis-section">
               <h3>
@@ -472,18 +581,10 @@ function ReadyState({
           </article>
         ) : (
           <article className="insight-card">
-            <div className="relevance-pill">High relevance · PCOS</div>
-            <p className="insight-copy">
-              This study focuses on insulin resistance in women with PCOS ages
-              18-35 directly relevant to your profile.
+            <div className="context-label">Analysis preview</div>
+            <p className="analysis-empty">
+              Run analysis to see target demographic chips and women-specific takeaways.
             </p>
-            <div className="tag-row">
-              {tags.map((tag) => (
-                <span className="tag" key={tag}>
-                  {tag}
-                </span>
-              ))}
-            </div>
           </article>
         )}
       </main>
@@ -523,6 +624,8 @@ export function LumaSidePanel() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
   const [languageMode, setLanguageMode] = useState("plain");
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [draftProfile, setDraftProfile] = useState(initialProfile);
   const [auth, setAuth] = useState({
     hasAccount: false,
     emailVerified: false,
@@ -695,6 +798,42 @@ export function LumaSidePanel() {
     await storageSet({ lumaLanguageMode: modeId });
   };
 
+  const handleOpenProfileModal = () => {
+    setDraftProfile(profile);
+    setIsProfileModalOpen(true);
+  };
+
+  const handleDraftProfileChange = (event) => {
+    const { name, value } = event.target;
+    setDraftProfile((current) => ({ ...current, [name]: value }));
+  };
+
+  const handleSaveProfile = async (event) => {
+    event.preventDefault();
+    setProfile(draftProfile);
+    setUserProfile(draftProfile);
+    await storageSet({
+      lumaProfile: draftProfile,
+      userProfile: draftProfile
+    });
+    try {
+      await fetch("http://localhost:4000/profile/send-update-email", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          email: draftProfile.email,
+          fullName: draftProfile.fullName
+        })
+      });
+    } catch (error) {
+      // Profile saving should not fail if email delivery is unavailable.
+      console.warn("Profile saved but email notification failed.", error);
+    }
+    setIsProfileModalOpen(false);
+  };
+
   const onboardingComplete = Boolean(userProfile);
 
   return (
@@ -711,6 +850,7 @@ export function LumaSidePanel() {
           analysisError={analysisError}
           languageMode={languageMode}
           onLanguageModeChange={handleLanguageModeChange}
+          onOpenProfile={handleOpenProfileModal}
         />
       ) : (
         <main className="panel-auth">
@@ -743,6 +883,14 @@ export function LumaSidePanel() {
           ) : null}
         </main>
       )}
+      {onboardingComplete && isProfileModalOpen ? (
+        <ProfileModal
+          form={draftProfile}
+          onChange={handleDraftProfileChange}
+          onSave={handleSaveProfile}
+          onClose={() => setIsProfileModalOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
