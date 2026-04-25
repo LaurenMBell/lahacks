@@ -6,8 +6,15 @@ import { requireAuth } from "../middleware/auth.js";
 const router = Router();
 
 const surveySchema = z.object({
-  ageRange: z.string().optional().nullable(),
-  sexAssignedAtBirth: z.string().optional().nullable(),
+  ageRange: z.string().trim().min(1),
+  weight: z.string().trim().min(1),
+  sexAssignedAtBirth: z.string().trim().min(1),
+  gender: z.string().trim().min(1),
+  familyMedicalHistory: z.string().optional().nullable(),
+  substanceUse: z.array(z.string().trim().min(1)).min(1),
+  substanceUseOther: z.string().optional().nullable(),
+  dietaryRestrictions: z.array(z.string().trim().min(1)).min(1),
+  dietaryRestrictionsOther: z.string().optional().nullable(),
   conditions: z.string().optional().nullable(),
   medications: z.string().optional().nullable(),
   goals: z.string().optional().nullable()
