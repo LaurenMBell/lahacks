@@ -5,7 +5,14 @@ const initialProfile = {
   email: "",
   fullName: "",
   ageRange: "",
+  weight: "",
   sexAssignedAtBirth: "",
+  gender: "",
+  familyMedicalHistory: "",
+  substanceUse: [],
+  substanceUseOther: "",
+  dietaryRestrictions: [],
+  dietaryRestrictionsOther: "",
   conditions: "",
   medications: "",
   goals: ""
@@ -118,6 +125,17 @@ function SurveyStep({ form, onChange, onSubmit }) {
         </label>
 
         <label className="field">
+          <span>Weight</span>
+          <input
+            name="weight"
+            type="text"
+            value={form.weight}
+            onChange={onChange}
+            placeholder="e.g. 140 lb"
+          />
+        </label>
+
+        <label className="field">
           <span>Sex assigned at birth</span>
           <select
             name="sexAssignedAtBirth"
@@ -132,6 +150,91 @@ function SurveyStep({ form, onChange, onSubmit }) {
             <option value="Prefer not to say">Prefer not to say</option>
           </select>
         </label>
+
+        <label className="field">
+          <span>Gender</span>
+          <input
+            name="gender"
+            type="text"
+            value={form.gender}
+            onChange={onChange}
+            placeholder="Woman, non-binary, etc."
+          />
+        </label>
+
+        <label className="field">
+          <span>Family medical history</span>
+          <textarea
+            name="familyMedicalHistory"
+            value={form.familyMedicalHistory}
+            onChange={onChange}
+            rows="3"
+            placeholder="Any relevant family history..."
+          />
+        </label>
+
+        <label className="field">
+          <span>Substance use</span>
+          <select
+            name="substanceUse"
+            value={form.substanceUse}
+            onChange={onChange}
+            multiple
+            aria-label="Substance use (multi-select)"
+          >
+            <option value="Alcohol">Alcohol</option>
+            <option value="Nicotine">Nicotine</option>
+            <option value="Cannabis">Cannabis</option>
+            <option value="Caffeine">Caffeine</option>
+            <option value="None">None</option>
+            <option value="Other">Other</option>
+          </select>
+        </label>
+
+        {form.substanceUse.includes("Other") ? (
+          <label className="field">
+            <span>Other substance use</span>
+            <input
+              name="substanceUseOther"
+              type="text"
+              value={form.substanceUseOther}
+              onChange={onChange}
+              placeholder="Please specify"
+            />
+          </label>
+        ) : null}
+
+        <label className="field">
+          <span>Dietary restrictions</span>
+          <select
+            name="dietaryRestrictions"
+            value={form.dietaryRestrictions}
+            onChange={onChange}
+            multiple
+            aria-label="Dietary restrictions (multi-select)"
+          >
+            <option value="Vegetarian">Vegetarian</option>
+            <option value="Vegan">Vegan</option>
+            <option value="Gluten-free">Gluten-free</option>
+            <option value="Dairy-free">Dairy-free</option>
+            <option value="Nut allergy">Nut allergy</option>
+            <option value="No restrictions">No restrictions</option>
+            <option value="Other">Other</option>
+          </select>
+        </label>
+
+        {form.dietaryRestrictions.includes("Other") ? (
+          <label className="field">
+            <span>Other dietary restrictions</span>
+            <input
+              name="dietaryRestrictionsOther"
+              type="text"
+              value={form.dietaryRestrictionsOther}
+              onChange={onChange}
+              placeholder="Please specify"
+            />
+          </label>
+        ) : null}
 
         <label className="field">
           <span>Relevant conditions</span>
@@ -340,8 +443,14 @@ export function LumaSidePanel() {
   };
 
   const handleFieldChange = (event) => {
-    const { name, value } = event.target;
-    setProfile((current) => ({ ...current, [name]: value }));
+    const { name, value, multiple, options } = event.target;
+    const nextValue = multiple
+      ? Array.from(options)
+          .filter((option) => option.selected)
+          .map((option) => option.value)
+      : value;
+
+    setProfile((current) => ({ ...current, [name]: nextValue }));
   };
 
   const handleSignup = async (event) => {
