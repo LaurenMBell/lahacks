@@ -292,14 +292,6 @@ function ReadyState({ page, profile, isEnabled, onToggle }) {
             >
               <span className="toggle-thumb"></span>
             </button>
-            <button
-              className="collapse-button"
-              type="button"
-              aria-label="Collapse panel"
-            >
-              <span></span>
-              <span></span>
-            </button>
           </div>
         </div>
 

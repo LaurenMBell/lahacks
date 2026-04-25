@@ -187,7 +187,8 @@ textarea {
 .header-controls {
   display: flex;
   align-items: center;
-  gap: 14px;
+  justify-content: flex-end;
+  min-width: 56px;
 }
 
 .toggle {
@@ -214,36 +215,6 @@ textarea {
   border-radius: 50%;
   background: #fff;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
-}
-
-.collapse-button {
-  position: relative;
-  width: 14px;
-  height: 22px;
-  border: none;
-  background: transparent;
-  padding: 0;
-  cursor: pointer;
-}
-
-.collapse-button span {
-  position: absolute;
-  right: 1px;
-  width: 10px;
-  height: 2px;
-  border-radius: 999px;
-  background: #a7a097;
-  transform-origin: right center;
-}
-
-.collapse-button span:first-child {
-  top: 7px;
-  transform: rotate(45deg);
-}
-
-.collapse-button span:last-child {
-  bottom: 7px;
-  transform: rotate(-45deg);
 }
 
 .status {
@@ -417,8 +388,8 @@ textarea {
 .ask-form button {
   border: none;
   border-radius: 20px;
-  background: #f4f1ec;
-  color: #d0c9bf;
+  background: var(--accent);
+  color: #fff;
   display: grid;
   place-items: center;
   cursor: pointer;
