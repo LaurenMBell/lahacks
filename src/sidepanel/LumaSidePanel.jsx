@@ -1,34 +1,182 @@
 import { useEffect, useState } from "react";
 
 const tags = ["Study: women only", "Ages 18-40", "N=200"];
+const initialProfile = {
+  email: "",
+  fullName: "",
+  ageRange: "",
+  sexAssignedAtBirth: "",
+  conditions: "",
+  medications: "",
+  goals: ""
+};
 
-export function LumaSidePanel() {
-  const [isEnabled, setIsEnabled] = useState(true);
-  const [page, setPage] = useState({
-    title: "Current article",
-    url: "Waiting for page context..."
+function storageGet(keys) {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(keys, resolve);
   });
+}
 
-  useEffect(() => {
-    chrome.storage.local.get(["lumaEnabled", "lumaLastPage"], (result) => {
-      if (typeof result.lumaEnabled === "boolean") {
-        setIsEnabled(result.lumaEnabled);
-      }
+function storageSet(value) {
+  return new Promise((resolve) => {
+    chrome.storage.local.set(value, resolve);
+  });
+}
 
-      if (result.lumaLastPage) {
-        setPage(result.lumaLastPage);
-      }
-    });
-  }, []);
-
-  const handleToggle = () => {
-    const nextValue = !isEnabled;
-    setIsEnabled(nextValue);
-    chrome.storage.local.set({ lumaEnabled: nextValue });
-  };
-
+function SignupStep({ form, onChange, onSubmit }) {
   return (
-    <div className="panel-shell">
+    <section className="flow-card">
+      <div className="flow-eyebrow">Create account</div>
+      <h2 className="flow-title">Start your Luma profile</h2>
+      <p className="flow-copy">
+        Sign up with your email so Luma can save your health context and tailor
+        article insights over time.
+      </p>
+
+      <form className="flow-form" onSubmit={onSubmit}>
+        <label className="field">
+          <span>Full name</span>
+          <input
+            name="fullName"
+            type="text"
+            value={form.fullName}
+            onChange={onChange}
+            placeholder="Avery Kim"
+            required
+          />
+        </label>
+
+        <label className="field">
+          <span>Email</span>
+          <input
+            name="email"
+            type="email"
+            value={form.email}
+            onChange={onChange}
+            placeholder="avery@example.com"
+            required
+          />
+        </label>
+
+        <button className="primary-button" type="submit">
+          Continue to verification
+        </button>
+      </form>
+    </section>
+  );
+}
+
+function VerificationStep({ email, onVerify }) {
+  return (
+    <section className="flow-card">
+      <div className="flow-eyebrow">Verification</div>
+      <h2 className="flow-title">Verify your email</h2>
+      <p className="flow-copy">
+        A real verification email cannot be sent from this extension alone.
+        Email delivery and secure token validation require hosted infrastructure
+        or an auth provider.
+      </p>
+
+      <div className="verification-note">
+        <strong>Prepared for:</strong> {email}
+      </div>
+
+      <p className="flow-copy flow-copy-small">
+        For now, this demo step lets us keep building the rest of the onboarding
+        flow and store the verified state locally.
+      </p>
+
+      <button className="primary-button" type="button" onClick={onVerify}>
+        Mark email as verified for local demo
+      </button>
+    </section>
+  );
+}
+
+function SurveyStep({ form, onChange, onSubmit }) {
+  return (
+    <section className="flow-card">
+      <div className="flow-eyebrow">Intro survey</div>
+      <h2 className="flow-title">Tell Luma a bit about you</h2>
+      <p className="flow-copy">
+        This basic health profile helps future article summaries reflect your
+        context more accurately.
+      </p>
+
+      <form className="flow-form" onSubmit={onSubmit}>
+        <label className="field">
+          <span>Age range</span>
+          <select name="ageRange" value={form.ageRange} onChange={onChange} required>
+            <option value="">Select age range</option>
+            <option value="Under 18">Under 18</option>
+            <option value="18-24">18-24</option>
+            <option value="25-34">25-34</option>
+            <option value="35-44">35-44</option>
+            <option value="45-54">45-54</option>
+            <option value="55+">55+</option>
+          </select>
+        </label>
+
+        <label className="field">
+          <span>Sex assigned at birth</span>
+          <select
+            name="sexAssignedAtBirth"
+            value={form.sexAssignedAtBirth}
+            onChange={onChange}
+            required
+          >
+            <option value="">Select option</option>
+            <option value="Female">Female</option>
+            <option value="Male">Male</option>
+            <option value="Intersex">Intersex</option>
+            <option value="Prefer not to say">Prefer not to say</option>
+          </select>
+        </label>
+
+        <label className="field">
+          <span>Relevant conditions</span>
+          <textarea
+            name="conditions"
+            value={form.conditions}
+            onChange={onChange}
+            rows="3"
+            placeholder="PCOS, endometriosis, migraines..."
+          />
+        </label>
+
+        <label className="field">
+          <span>Current medications or supplements</span>
+          <textarea
+            name="medications"
+            value={form.medications}
+            onChange={onChange}
+            rows="3"
+            placeholder="Metformin, iron, vitamin D..."
+          />
+        </label>
+
+        <label className="field">
+          <span>Main goals</span>
+          <textarea
+            name="goals"
+            value={form.goals}
+            onChange={onChange}
+            rows="3"
+            placeholder="Understand symptoms, compare studies, find lifestyle changes..."
+          />
+        </label>
+
+        <button className="primary-button" type="submit">
+          Save profile
+        </button>
+      </form>
+    </section>
+  );
+}
+
+function ReadyState({ page, profile, isEnabled, onToggle }) {
+  return (
+    <>
       <header className="panel-header">
         <div className="brand-row">
           <div className="brand">Luma</div>
@@ -37,7 +185,7 @@ export function LumaSidePanel() {
               className={`toggle ${isEnabled ? "is-on" : ""}`}
               type="button"
               aria-pressed={isEnabled}
-              onClick={handleToggle}
+              onClick={onToggle}
             >
               <span className="toggle-thumb"></span>
             </button>
@@ -69,6 +217,26 @@ export function LumaSidePanel() {
           <div className="context-label">Current page</div>
           <div className="context-title">{page.title || "Current article"}</div>
           <div className="context-url">{page.url}</div>
+        </div>
+
+        <div className="profile-summary">
+          <div className="context-label">Saved profile</div>
+          <div className="summary-grid">
+            <div>
+              <span className="summary-key">Email</span>
+              <span className="summary-value">{profile.email}</span>
+            </div>
+            <div>
+              <span className="summary-key">Age range</span>
+              <span className="summary-value">{profile.ageRange || "Not set"}</span>
+            </div>
+            <div>
+              <span className="summary-key">Sex at birth</span>
+              <span className="summary-value">
+                {profile.sexAssignedAtBirth || "Not set"}
+              </span>
+            </div>
+          </div>
         </div>
 
         <article className="insight-card">
@@ -109,6 +277,156 @@ export function LumaSidePanel() {
           topics
         </p>
       </footer>
+    </>
+  );
+}
+
+export function LumaSidePanel() {
+  const [isEnabled, setIsEnabled] = useState(true);
+  const [page, setPage] = useState({
+    title: "Current article",
+    url: "Waiting for page context..."
+  });
+  const [profile, setProfile] = useState(initialProfile);
+  const [auth, setAuth] = useState({
+    hasAccount: false,
+    emailVerified: false,
+    surveyCompleted: false
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadState() {
+      const result = await storageGet([
+        "lumaEnabled",
+        "lumaLastPage",
+        "lumaAuth",
+        "lumaProfile"
+      ]);
+
+      if (!isMounted) {
+        return;
+      }
+
+      if (typeof result.lumaEnabled === "boolean") {
+        setIsEnabled(result.lumaEnabled);
+      }
+
+      if (result.lumaLastPage) {
+        setPage(result.lumaLastPage);
+      }
+
+      if (result.lumaAuth) {
+        setAuth(result.lumaAuth);
+      }
+
+      if (result.lumaProfile) {
+        setProfile({ ...initialProfile, ...result.lumaProfile });
+      }
+    }
+
+    loadState();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleToggle = async () => {
+    const nextValue = !isEnabled;
+    setIsEnabled(nextValue);
+    await storageSet({ lumaEnabled: nextValue });
+  };
+
+  const handleFieldChange = (event) => {
+    const { name, value } = event.target;
+    setProfile((current) => ({ ...current, [name]: value }));
+  };
+
+  const handleSignup = async (event) => {
+    event.preventDefault();
+    const nextAuth = {
+      hasAccount: true,
+      emailVerified: false,
+      surveyCompleted: false
+    };
+
+    setAuth(nextAuth);
+    await storageSet({
+      lumaAuth: nextAuth,
+      lumaProfile: profile
+    });
+  };
+
+  const handleVerify = async () => {
+    const nextAuth = {
+      ...auth,
+      emailVerified: true
+    };
+
+    setAuth(nextAuth);
+    await storageSet({ lumaAuth: nextAuth });
+  };
+
+  const handleSurveySubmit = async (event) => {
+    event.preventDefault();
+
+    const nextAuth = {
+      ...auth,
+      surveyCompleted: true
+    };
+
+    setAuth(nextAuth);
+    await storageSet({
+      lumaAuth: nextAuth,
+      lumaProfile: profile
+    });
+  };
+
+  const onboardingComplete =
+    auth.hasAccount && auth.emailVerified && auth.surveyCompleted;
+
+  return (
+    <div className="panel-shell">
+      {onboardingComplete ? (
+        <ReadyState
+          isEnabled={isEnabled}
+          onToggle={handleToggle}
+          page={page}
+          profile={profile}
+        />
+      ) : (
+        <main className="panel-auth">
+          <div className="auth-header">
+            <div className="brand">Luma</div>
+            <p className="auth-subtitle">
+              Personalized health context starts with a verified account and a
+              lightweight intro survey.
+            </p>
+          </div>
+
+          {!auth.hasAccount ? (
+            <SignupStep
+              form={profile}
+              onChange={handleFieldChange}
+              onSubmit={handleSignup}
+            />
+          ) : null}
+
+          {auth.hasAccount && !auth.emailVerified ? (
+            <VerificationStep email={profile.email} onVerify={handleVerify} />
+          ) : null}
+
+          {auth.hasAccount && auth.emailVerified && !auth.surveyCompleted ? (
+            <SurveyStep
+              form={profile}
+              onChange={handleFieldChange}
+              onSubmit={handleSurveySubmit}
+            />
+          ) : null}
+        </main>
+      )}
     </div>
   );
 }
