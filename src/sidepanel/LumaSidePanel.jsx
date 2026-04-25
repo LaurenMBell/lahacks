@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 
-const tags = ["Study: women only", "Ages 18-40", "N=200"];
+const LUMA_API_BASE_URL =
+  (import.meta.env.VITE_LUMA_API_BASE_URL || "http://localhost:3001").replace(/\/+$/, "");
+const fallbackTags = ["Study population", "Women's health", "Evidence strength"];
 const initialProfile = {
   email: "",
   fullName: "",
@@ -30,7 +32,7 @@ function storageSet(value) {
   });
 }
 
-function truncateText(text, maxLength = 140) {
+function truncateText(text, maxLength = 160) {
   if (!text) {
     return "—";
   }
@@ -41,6 +43,32 @@ function truncateText(text, maxLength = 140) {
   }
 
   return `${trimmed.slice(0, maxLength).trimEnd()}...`;
+}
+
+async function apiFetch(path, options = {}) {
+  let response;
+
+  try {
+    response = await fetch(`${LUMA_API_BASE_URL}${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers || {})
+      }
+    });
+  } catch (error) {
+    throw new Error(
+      `Could not reach Luma backend at ${LUMA_API_BASE_URL}. Check VITE_LUMA_API_BASE_URL and backend availability.`
+    );
+  }
+
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(payload?.details || payload?.error || `Request failed with ${response.status}`);
+  }
+
+  return payload;
 }
 
 function SignupStep({ form, onChange, onSubmit }) {
@@ -298,10 +326,22 @@ function ReadyState({
   onAnalyze,
   isAnalyzing,
   analysis,
-  analysisError
+  analysisError,
+  followUpQuestion,
+  onFollowUpChange,
+  onFollowUpSubmit,
+  isSubmittingFollowUp,
+  followUpResponses,
+  articleSessionId,
+  analysisStatus
 }) {
+  const statusLabel = analysisStatus || "pending";
+
   const pageTitle = pageContext?.title || "—";
-  const articleSnippet = truncateText(pageContext?.text, 140);
+  const articleSnippet = truncateText(pageContext?.abstractText || pageContext?.rawText, 180);
+  const tags = analysis?.tags?.length
+    ? analysis.tags.map((tag) => tag.value || tag.label)
+    : fallbackTags;
 
   return (
     <>
@@ -321,7 +361,11 @@ function ReadyState({
         </div>
 
         <div className="status">
-          <span>{isEnabled ? "Analyzing page for you" : "Luma is paused"}</span>
+          <span>
+            {isEnabled
+              ? `Article status: ${statusLabel}`
+              : "Luma is paused"}
+          </span>
           {isEnabled ? (
             <span className="status-dots" aria-hidden="true">
               <i></i>
@@ -340,10 +384,14 @@ function ReadyState({
         </div>
 
         <div className="page-context">
-          <div className="context-label">Current article</div>
+          <div className="context-label">Extracted article snapshot</div>
           <div className="context-title">{articleSnippet}</div>
           <div className="context-url">
-            {pageContext ? "Ready to analyze." : "Waiting for page context..."}
+            {pageContext?.journal || "Journal unknown"}{" "}
+            {pageContext?.publishedAtLabel ? `· ${pageContext.publishedAtLabel}` : ""}
+          </div>
+          <div className="context-url">
+            {pageContext?.authors?.length ? truncateText(pageContext.authors.join(", "), 120) : "Authors unavailable"}
           </div>
           <button
             className="primary-button analyze-button"
@@ -351,7 +399,7 @@ function ReadyState({
             onClick={onAnalyze}
             disabled={isAnalyzing || !pageContext}
           >
-            {isAnalyzing ? "Analyzing with AI..." : "Analyze this study"}
+            {isAnalyzing ? "Analyzing with Gemma..." : "Analyze this article"}
           </button>
           {analysisError ? <p className="analysis-error">{analysisError}</p> : null}
         </div>
@@ -378,43 +426,11 @@ function ReadyState({
 
         {analysis ? (
           <article className="insight-card">
-            <div className="context-label">This study focuses on...</div>
+            <div className="context-label">
+              Gemma analysis {articleSessionId ? `· ${articleSessionId.slice(0, 8)}` : ""}
+            </div>
             <p className="insight-copy">{analysis.summary}</p>
 
-            <div className="analysis-section">
-              <h3>What this means for women</h3>
-              <ul>
-                {(analysis.womenSections || []).map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="analysis-section">
-              <h3>Bias notes</h3>
-              <ul>
-                {(analysis.biasNotes || []).map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="analysis-section">
-              <h3>Follow-up questions</h3>
-              <ul>
-                {(analysis.followUpQuestions || []).map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </div>
-          </article>
-        ) : (
-          <article className="insight-card">
-            <div className="relevance-pill">High relevance · PCOS</div>
-            <p className="insight-copy">
-              This study focuses on insulin resistance in women with PCOS ages
-              18-35 directly relevant to your profile.
-            </p>
             <div className="tag-row">
               {tags.map((tag) => (
                 <span className="tag" key={tag}>
@@ -422,13 +438,78 @@ function ReadyState({
                 </span>
               ))}
             </div>
+
+            <div className="analysis-section">
+              <h3>Notes for this user</h3>
+              <ul>
+                {(analysis.user_specific_notes || []).map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="analysis-section">
+              <h3>Direct citations</h3>
+              <ul>
+                {(analysis.citations || []).map((item) => (
+                  <li key={`${item.label}-${item.quote}`}>
+                    <strong>{item.label}:</strong> {item.quote}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="analysis-section">
+              <h3>Follow-up questions</h3>
+              <ul>
+                {(analysis.follow_up_suggestions || []).map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="analysis-section">
+              <h3>Warnings</h3>
+              <ul>
+                {(analysis.warnings || []).map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          </article>
+        ) : (
+          <article className="insight-card">
+            <div className="relevance-pill">Awaiting analysis</div>
+            <p className="insight-copy">
+              Luma has the article snapshot and your profile. Run Gemma analysis
+              to generate citations, tags, and user-specific notes.
+            </p>
+            <div className="tag-row">
+              {fallbackTags.map((tag) => (
+                <span className="tag" key={tag}>
+                  {tag}
+                </span>
+              ))}
+            </div>
           </article>
         )}
+
+        {followUpResponses.length ? (
+          <article className="insight-card">
+            <div className="context-label">Follow-up responses</div>
+            {followUpResponses.map((item) => (
+              <div className="analysis-section" key={item.id}>
+                <h3>{item.question}</h3>
+                <p className="insight-copy">{item.answer}</p>
+              </div>
+            ))}
+          </article>
+        ) : null}
       </main>
 
       <footer className="panel-footer">
         <div className="footer-label">Ask Luma</div>
-        <form className="ask-form">
+        <form className="ask-form" onSubmit={onFollowUpSubmit}>
           <label className="sr-only" htmlFor="follow-up">
             Ask a follow-up question
           </label>
@@ -436,16 +517,24 @@ function ReadyState({
             id="follow-up"
             type="text"
             placeholder="Ask a follow-up question..."
+            value={followUpQuestion}
+            onChange={onFollowUpChange}
+            disabled={!articleSessionId || isSubmittingFollowUp}
           />
-          <button type="submit" aria-label="Send question">
+          <button
+            type="submit"
+            aria-label="Send question"
+            disabled={!articleSessionId || isSubmittingFollowUp || !followUpQuestion.trim()}
+          >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M20.7 3.3 3.9 10.5c-.8.3-.8 1.5 0 1.8l6.4 2.3 2.3 6.4c.3.8 1.5.8 1.8 0L21.6 4.2c.3-.7-.3-1.3-.9-.9Z" />
             </svg>
           </button>
         </form>
         <p className="footer-copy">
-          Get personalized insights, find similar studies, or explore related
-          topics
+          {articleSessionId
+            ? "Ask article-specific questions after Gemma finishes its first pass."
+            : "Analyze an article first to unlock follow-up questions."}
         </p>
       </footer>
     </>
@@ -457,9 +546,14 @@ export function LumaSidePanel() {
   const [pageContext, setPageContext] = useState(null);
   const [profile, setProfile] = useState(initialProfile);
   const [userProfile, setUserProfile] = useState(null);
+  const [articleSessionId, setArticleSessionId] = useState("");
   const [analysis, setAnalysis] = useState(null);
+  const [analysisStatus, setAnalysisStatus] = useState("pending");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
+  const [followUpQuestion, setFollowUpQuestion] = useState("");
+  const [followUpResponses, setFollowUpResponses] = useState([]);
+  const [isSubmittingFollowUp, setIsSubmittingFollowUp] = useState(false);
   const [auth, setAuth] = useState({
     hasAccount: false,
     emailVerified: false,
@@ -485,7 +579,7 @@ export function LumaSidePanel() {
         setIsEnabled(result.lumaEnabled);
       }
 
-      if (result.lumaLastPage?.text) {
+      if (result.lumaLastPage?.rawText) {
         setPageContext(result.lumaLastPage);
       }
 
@@ -510,7 +604,16 @@ export function LumaSidePanel() {
   useEffect(() => {
     function handleRuntimeMessage(message) {
       if (message?.type === "PAGE_CONTEXT" && message.payload) {
-        setPageContext(message.payload);
+        setPageContext((current) => {
+          if (current?.normalizedUrl !== message.payload.normalizedUrl) {
+            setArticleSessionId("");
+            setAnalysis(null);
+            setAnalysisStatus("pending");
+            setFollowUpResponses([]);
+          }
+
+          return message.payload;
+        });
       }
     }
 
@@ -587,35 +690,67 @@ export function LumaSidePanel() {
 
     setIsAnalyzing(true);
     setAnalysisError("");
+    setAnalysisStatus("pending");
 
     try {
-      const response = await fetch(
-        "https://YOUR-VULTR-SERVER/summarize-article",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            articleText: pageContext.text,
-            url: pageContext.url,
-            title: pageContext.title,
-            userProfile
-          })
-        }
-      );
+      const sessionPayload = await apiFetch("/articles/session", {
+        method: "POST",
+        body: JSON.stringify({
+          ...pageContext,
+          userProfile
+        })
+      });
 
-      if (!response.ok) {
-        throw new Error(`Backend request failed: ${response.status}`);
-      }
+      const nextArticleSessionId = sessionPayload.articleSession.id;
+      setArticleSessionId(nextArticleSessionId);
+      setAnalysisStatus(sessionPayload.articleSession.status || "pending");
+      setAnalysisStatus("analyzing");
 
-      const payload = await response.json();
-      setAnalysis(payload);
+      const analysisPayload = await apiFetch("/analysis/run", {
+        method: "POST",
+        body: JSON.stringify({
+          articleSessionId: nextArticleSessionId,
+          userProfile
+        })
+      });
+
+      setAnalysis(analysisPayload.analysis);
+      setAnalysisStatus(analysisPayload.status || "complete");
+      setFollowUpResponses([]);
     } catch (error) {
-      setAnalysisError(error.message || "Could not analyze this study right now.");
+      setAnalysisError(error.message || "Could not analyze this article right now.");
       setAnalysis(null);
+      setAnalysisStatus("failed");
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  const handleFollowUpSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!articleSessionId || !followUpQuestion.trim()) {
+      return;
+    }
+
+    setIsSubmittingFollowUp(true);
+    setAnalysisError("");
+
+    try {
+      const payload = await apiFetch(`/analysis/${articleSessionId}/follow-up`, {
+        method: "POST",
+        body: JSON.stringify({
+          question: followUpQuestion.trim(),
+          userProfile
+        })
+      });
+
+      setFollowUpResponses((current) => [...current, payload]);
+      setFollowUpQuestion("");
+    } catch (error) {
+      setAnalysisError(error.message || "Could not answer the follow-up question.");
+    } finally {
+      setIsSubmittingFollowUp(false);
     }
   };
 
@@ -633,6 +768,13 @@ export function LumaSidePanel() {
           isAnalyzing={isAnalyzing}
           analysis={analysis}
           analysisError={analysisError}
+          followUpQuestion={followUpQuestion}
+          onFollowUpChange={(event) => setFollowUpQuestion(event.target.value)}
+          onFollowUpSubmit={handleFollowUpSubmit}
+          isSubmittingFollowUp={isSubmittingFollowUp}
+          followUpResponses={followUpResponses}
+          articleSessionId={articleSessionId}
+          analysisStatus={analysisStatus}
         />
       ) : (
         <main className="panel-auth">

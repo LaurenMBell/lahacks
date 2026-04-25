@@ -5,11 +5,14 @@ React-based Chrome extension scaffold for the Luma side panel.
 ## Run locally
 
 1. Install dependencies with `npm install`
-2. Build the extension with `npm run build`
-3. Open `chrome://extensions`
-4. Enable Developer Mode
-5. Click `Load unpacked`
-6. Select the `dist` folder
+2. Set extension API base URL:
+   - create `.env` from `.env.example`
+   - set `VITE_LUMA_API_BASE_URL` to your backend (for local use `http://localhost:3001`)
+3. Build the extension with `npm run build`
+4. Open `chrome://extensions`
+5. Enable Developer Mode
+6. Click `Load unpacked`
+7. Select the `dist` folder
 
 ## Included pieces
 
@@ -50,3 +53,12 @@ The repository now includes a backend in `server/` with:
 - Prisma schema for PostgreSQL
 
 This is the path to use if you want to host your own backend on a small Vultr VM with Vultr Managed PostgreSQL.
+
+## Hosted model readiness checks
+
+- Backend health endpoint: `GET /health`
+- Gemma connectivity endpoint: `GET /health/model`
+- If `/health/model` fails, check `server/.env` values for:
+  - `GEMMA_API_URL`
+  - `GEMMA_API_KEY`
+  - `GEMMA_MODEL`

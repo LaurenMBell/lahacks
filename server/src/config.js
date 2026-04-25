@@ -9,8 +9,10 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(16),
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().email().optional(),
-  OPENAI_API_KEY: z.string().optional(),
-  OPENAI_MODEL: z.string().default("gpt-4.1-mini")
+  GEMMA_API_URL: z.string().url().optional(),
+  GEMMA_API_KEY: z.string().optional(),
+  GEMMA_MODEL: z.string().default("gemma-3-27b-it"),
+  ANALYSIS_TIMEOUT_MS: z.coerce.number().default(30000)
 });
 
 export const env = envSchema.parse(process.env);
