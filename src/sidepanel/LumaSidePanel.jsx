@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 
 const tags = ["Study: women only", "Ages 18-40", "N=200"];
+const languageModes = [
+  { id: "plain", label: "Plain language" },
+  { id: "clinical", label: "Clinical language" },
+  { id: "doctorPrep", label: "Doctor prep" }
+];
 const initialProfile = {
   email: "",
   fullName: "",
@@ -41,6 +46,10 @@ function truncateText(text, maxLength = 140) {
   }
 
   return `${trimmed.slice(0, maxLength).trimEnd()}...`;
+}
+
+function ensureArray(value, fallback = []) {
+  return Array.isArray(value) ? value : fallback;
 }
 
 function SignupStep({ form, onChange, onSubmit }) {
@@ -298,7 +307,9 @@ function ReadyState({
   onAnalyze,
   isAnalyzing,
   analysis,
-  analysisError
+  analysisError,
+  languageMode,
+  onLanguageModeChange
 }) {
   const pageTitle = pageContext?.title || "—";
   const articleSnippet = truncateText(pageContext?.text, 140);
@@ -316,6 +327,14 @@ function ReadyState({
               onClick={onToggle}
             >
               <span className="toggle-thumb"></span>
+            </button>
+            <button
+              className="collapse-button"
+              type="button"
+              aria-label="Collapse panel"
+            >
+              <span></span>
+              <span></span>
             </button>
           </div>
         </div>
@@ -344,6 +363,20 @@ function ReadyState({
           <div className="context-title">{articleSnippet}</div>
           <div className="context-url">
             {pageContext ? "Ready to analyze." : "Waiting for page context..."}
+          </div>
+          <div className="context-label mode-label">Accessibility mode</div>
+          <div className="mode-toggle-row">
+            {languageModes.map((mode) => (
+              <button
+                key={mode.id}
+                type="button"
+                className={`mode-chip ${languageMode === mode.id ? "is-active" : ""}`}
+                onClick={() => onLanguageModeChange(mode.id)}
+                aria-pressed={languageMode === mode.id}
+              >
+                {mode.label}
+              </button>
+            ))}
           </div>
           <button
             className="primary-button analyze-button"
@@ -378,33 +411,62 @@ function ReadyState({
 
         {analysis ? (
           <article className="insight-card">
-            <div className="context-label">This study focuses on...</div>
+            <div className="relevance-pill">This study focuses on...</div>
             <p className="insight-copy">{analysis.summary}</p>
 
             <div className="analysis-section">
-              <h3>What this means for women</h3>
-              <ul>
-                {(analysis.womenSections || []).map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
+              <h3>
+                <strong>What this means for women</strong>
+              </h3>
+              <div className="analysis-chip-grid">
+                {ensureArray(analysis.womenSections).length > 0 ? (
+                  ensureArray(analysis.womenSections).map((item, index) => (
+                    <p className="analysis-chip" key={`women-${index}-${item}`}>
+                      {item}
+                    </p>
+                  ))
+                ) : (
+                  <p className="analysis-empty">
+                    No women-specific takeaways were detected yet.
+                  </p>
+                )}
+              </div>
             </div>
 
             <div className="analysis-section">
-              <h3>Bias notes</h3>
-              <ul>
-                {(analysis.biasNotes || []).map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
+              <h3>
+                <strong>Bias notes</strong>
+              </h3>
+              <div className="analysis-chip-grid">
+                {ensureArray(analysis.biasNotes).length > 0 ? (
+                  ensureArray(analysis.biasNotes).map((item, index) => (
+                    <p className="analysis-chip analysis-chip-warn" key={`bias-${index}-${item}`}>
+                      {item}
+                    </p>
+                  ))
+                ) : (
+                  <p className="analysis-empty">
+                    No clear bias signal found in this article summary.
+                  </p>
+                )}
+              </div>
             </div>
 
             <div className="analysis-section">
-              <h3>Follow-up questions</h3>
-              <ul>
-                {(analysis.followUpQuestions || []).map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
+              <h3>
+                <strong>Follow-up questions</strong>
+              </h3>
+              <ul className="question-list">
+                {ensureArray(analysis.followUpQuestions).length > 0 ? (
+                  ensureArray(analysis.followUpQuestions).map((item, index) => (
+                    <li key={`question-${index}-${item}`}>{item}</li>
+                  ))
+                ) : (
+                  <li>
+                    Ask your doctor: "How does this study apply to my health
+                    profile?"
+                  </li>
+                )}
               </ul>
             </div>
           </article>
@@ -460,6 +522,7 @@ export function LumaSidePanel() {
   const [analysis, setAnalysis] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
+  const [languageMode, setLanguageMode] = useState("plain");
   const [auth, setAuth] = useState({
     hasAccount: false,
     emailVerified: false,
@@ -474,7 +537,9 @@ export function LumaSidePanel() {
         "lumaEnabled",
         "lumaLastPage",
         "lumaAuth",
-        "lumaProfile"
+        "lumaProfile",
+        "userProfile",
+        "lumaLanguageMode"
       ]);
 
       if (!isMounted) {
@@ -493,10 +558,15 @@ export function LumaSidePanel() {
         setAuth(result.lumaAuth);
       }
 
-      if (result.lumaProfile) {
-        const hydratedProfile = { ...initialProfile, ...result.lumaProfile };
+      const storedProfile = result.userProfile || result.lumaProfile;
+      if (storedProfile) {
+        const hydratedProfile = { ...initialProfile, ...storedProfile };
         setProfile(hydratedProfile);
         setUserProfile(hydratedProfile);
+      }
+
+      if (result.lumaLanguageMode && typeof result.lumaLanguageMode === "string") {
+        setLanguageMode(result.lumaLanguageMode);
       }
     }
 
@@ -590,17 +660,18 @@ export function LumaSidePanel() {
 
     try {
       const response = await fetch(
-        "https://YOUR-VULTR-SERVER/summarize-article",
+        "http://localhost:4000/summarize-article",
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            articleText: pageContext.text,
+            articleText: pageContext.text.slice(0, 8000),
             url: pageContext.url,
             title: pageContext.title,
-            userProfile
+            userProfile,
+            languageMode
           })
         }
       );
@@ -619,6 +690,11 @@ export function LumaSidePanel() {
     }
   };
 
+  const handleLanguageModeChange = async (modeId) => {
+    setLanguageMode(modeId);
+    await storageSet({ lumaLanguageMode: modeId });
+  };
+
   const onboardingComplete = Boolean(userProfile);
 
   return (
@@ -633,6 +709,8 @@ export function LumaSidePanel() {
           isAnalyzing={isAnalyzing}
           analysis={analysis}
           analysisError={analysisError}
+          languageMode={languageMode}
+          onLanguageModeChange={handleLanguageModeChange}
         />
       ) : (
         <main className="panel-auth">
