@@ -7,25 +7,99 @@ function delay(ms) {
 }
 
 function parseJsonFromText(text) {
-  const candidate = text.trim();
+  const candidate = `${text || ""}`.trim();
+  const objectStart = candidate.indexOf("{");
+  const objectEnd = candidate.lastIndexOf("}");
+  const extractedObject =
+    objectStart >= 0 && objectEnd > objectStart
+      ? candidate.slice(objectStart, objectEnd + 1)
+      : candidate;
 
-  try {
-    return JSON.parse(candidate);
-  } catch {
-    const start = candidate.indexOf("{");
-    const end = candidate.lastIndexOf("}");
+  const normalized = extractedObject
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .replace(/[\u201C\u201D]/g, "\"")
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/,\s*([}\]])/g, "$1")
+    .trim();
 
-    if (start >= 0 && end > start) {
-      return JSON.parse(candidate.slice(start, end + 1));
+  const attempts = [candidate, extractedObject, normalized];
+  for (const attempt of attempts) {
+    try {
+      return JSON.parse(attempt);
+    } catch {
+      // Try next strategy.
+    }
+  }
+
+  // Final salvage attempt for truncated JSON objects.
+  const balanced = tryBalanceJsonObject(normalized);
+  if (balanced) {
+    try {
+      return JSON.parse(balanced);
+    } catch {
+      // Ignore; fall through to explicit error.
+    }
+  }
+
+  throw new Error("Model output was not valid JSON.");
+}
+
+function tryBalanceJsonObject(input) {
+  if (!input || !input.includes("{")) {
+    return null;
+  }
+
+  const stack = [];
+  let inString = false;
+  let escaped = false;
+
+  for (const char of input) {
+    if (escaped) {
+      escaped = false;
+      continue;
     }
 
-    throw new Error("Model output was not valid JSON.");
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (char === "\"") {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) {
+      continue;
+    }
+
+    if (char === "{" || char === "[") {
+      stack.push(char);
+      continue;
+    }
+
+    if (char === "}" && stack[stack.length - 1] === "{") {
+      stack.pop();
+      continue;
+    }
+
+    if (char === "]" && stack[stack.length - 1] === "[") {
+      stack.pop();
+    }
   }
+
+  let suffix = "";
+  for (let index = stack.length - 1; index >= 0; index -= 1) {
+    suffix += stack[index] === "{" ? "}" : "]";
+  }
+
+  return `${input}${suffix}`;
 }
 
 function createTimeoutSignal(timeoutMs) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort("timeout"), timeoutMs);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   return {
     signal: controller.signal,
@@ -35,6 +109,10 @@ function createTimeoutSignal(timeoutMs) {
 
 function normalizeApiUrl(apiUrl) {
   return `${apiUrl || ""}`.trim().replace(/\/+$/, "");
+}
+
+function isLocalOllamaUrl(apiUrl) {
+  return /(^https?:\/\/)?(localhost|127\.0\.0\.1):11434$/i.test(apiUrl || "");
 }
 
 function resolveEndpointCandidates(apiUrl) {
@@ -49,6 +127,20 @@ function resolveEndpointCandidates(apiUrl) {
 
   if (normalized.endsWith("/api/chat")) {
     return [{ url: normalized, mode: "ollama" }];
+  }
+
+  const prefersOllama = isLocalOllamaUrl(normalized) || /ollama/i.test(normalized);
+
+  if (prefersOllama) {
+    // Local Ollama should not pay latency for OpenAI-compatible fallback endpoints.
+    if (isLocalOllamaUrl(normalized)) {
+      return [{ url: `${normalized}/api/chat`, mode: "ollama" }];
+    }
+
+    return [
+      { url: `${normalized}/api/chat`, mode: "ollama" },
+      { url: `${normalized}/v1/chat/completions`, mode: "openai" }
+    ];
   }
 
   return [
@@ -91,44 +183,50 @@ export class GemmaClient {
     this.apiKey = config.GEMMA_API_KEY;
     this.model = config.GEMMA_MODEL;
     this.timeoutMs = config.ANALYSIS_TIMEOUT_MS;
-    this.maxRequestRetries = 1;
+    // Extra retries often double perceived latency; keep requests single-shot by default.
+    this.maxRequestRetries = 0;
   }
 
   assertConfigured() {
     if (!this.apiUrl) {
       throw new Error("Server is missing GEMMA_API_URL.");
     }
-
-    if (!this.apiKey) {
-      throw new Error("Server is missing GEMMA_API_KEY.");
-    }
   }
 
   async requestCompletion({ messages }) {
     this.assertConfigured();
     const endpointCandidates = resolveEndpointCandidates(this.apiUrl);
+    let lastError = null;
     for (let attempt = 0; attempt <= this.maxRequestRetries; attempt += 1) {
-      const { signal, cancel } = createTimeoutSignal(this.timeoutMs);
-
       try {
         let lastNonRetryableError = null;
 
         for (const endpoint of endpointCandidates) {
-          const response = await fetch(endpoint.url, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${this.apiKey}`
-            },
-            signal,
-            body: JSON.stringify(
-              buildRequestBody({
-                mode: endpoint.mode,
-                model: this.model,
-                messages
-              })
-            )
-          });
+          const headers = {
+            "Content-Type": "application/json"
+          };
+          if (this.apiKey) {
+            headers.Authorization = `Bearer ${this.apiKey}`;
+          }
+
+          const { signal, cancel } = createTimeoutSignal(this.timeoutMs);
+          let response;
+          try {
+            response = await fetch(endpoint.url, {
+              method: "POST",
+              headers,
+              signal,
+              body: JSON.stringify(
+                buildRequestBody({
+                  mode: endpoint.mode,
+                  model: this.model,
+                  messages
+                })
+              )
+            });
+          } finally {
+            cancel();
+          }
 
           if (!response.ok) {
             const details = await response.text();
@@ -160,14 +258,21 @@ export class GemmaClient {
         }
 
         if (lastNonRetryableError) {
+          lastError = lastNonRetryableError;
           throw lastNonRetryableError;
         }
-        throw new Error("Gemma request failed across all configured endpoints.");
+        const error = new Error("Gemma request failed across all configured endpoints.");
+        lastError = error;
+        throw error;
       } catch (error) {
-        const didTimeout = error?.name === "AbortError";
+        const errorMessage = error?.message || `${error || ""}`;
+        const didTimeout =
+          error?.name === "AbortError" ||
+          /timed?\s*out|aborted/i.test(errorMessage);
         const message = didTimeout
           ? `Gemma request timed out after ${this.timeoutMs}ms.`
-          : error.message || "Gemma request failed.";
+          : errorMessage || "Gemma request failed.";
+        lastError = new Error(message);
 
         if (attempt < this.maxRequestRetries && didTimeout) {
           await delay(350 * (attempt + 1));
@@ -175,12 +280,10 @@ export class GemmaClient {
         }
 
         throw new Error(message);
-      } finally {
-        cancel();
       }
     }
 
-    throw new Error("Gemma request failed.");
+    throw lastError || new Error("Gemma request failed.");
   }
 
   async createJsonCompletion({
@@ -204,6 +307,11 @@ export class GemmaClient {
         rawResponse: firstAttempt.rawResponse,
         repaired: false
       };
+    }
+
+    // If JSON parses but schema still mismatches, a repair pass is usually slow and low-yield.
+    if ((firstResult.error || "").includes("did not match expected shape")) {
+      throw new Error(firstResult.error);
     }
 
     const secondAttempt = await this.requestCompletion({

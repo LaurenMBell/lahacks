@@ -1,5 +1,76 @@
 import { z } from "zod";
 
+const nullableArrayDefault = (itemSchema) =>
+  z.preprocess((value) => {
+    if (value == null) {
+      return [];
+    }
+    return Array.isArray(value) ? value : [];
+  }, z.array(itemSchema).default([]));
+
+const flexibleStringArray = z.preprocess((value) => {
+  if (value == null) {
+    return [];
+  }
+  if (Array.isArray(value)) {
+    return value;
+  }
+  if (typeof value !== "string") {
+    return [];
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  if (trimmed.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      return Array.isArray(parsed) ? parsed : [trimmed];
+    } catch {
+      return [trimmed];
+    }
+  }
+
+  if (trimmed.includes("\n")) {
+    return trimmed
+      .split("\n")
+      .map((item) => item.replace(/^[\s\-*•]+/, "").trim())
+      .filter(Boolean);
+  }
+
+  if (trimmed.includes(",")) {
+    return trimmed
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  return [trimmed];
+}, z.array(z.string().min(1)).default([]));
+
+const relevanceScoreSchema = z.preprocess((value) => {
+  if (value == null || value === "") {
+    return null;
+  }
+
+  const numeric =
+    typeof value === "number"
+      ? value
+      : Number.parseFloat(`${value}`.replace("%", "").trim());
+
+  if (!Number.isFinite(numeric)) {
+    return null;
+  }
+
+  if (numeric > 1 && numeric <= 100) {
+    return numeric / 100;
+  }
+
+  return numeric;
+}, z.number().min(0).max(1).nullable().optional());
+
 export const citationSchema = z.object({
   label: z.string().min(1),
   quote: z.string().min(1),
@@ -17,23 +88,23 @@ export const tagSchema = z.object({
 
 export const articleAnalysisSchema = z.object({
   summary: z.string().min(1),
-  user_specific_notes: z.array(z.string().min(1)).default([]),
-  citations: z.array(citationSchema).default([]),
-  tags: z.array(tagSchema).default([]),
-  follow_up_suggestions: z.array(z.string().min(1)).default([]),
-  related_article_keywords: z.array(z.string().min(1)).default([]),
-  relevance_score: z.number().min(0).max(1).nullable().optional(),
-  warnings: z.array(z.string().min(1)).default([])
+  user_specific_notes: flexibleStringArray,
+  citations: nullableArrayDefault(citationSchema),
+  tags: nullableArrayDefault(tagSchema),
+  follow_up_suggestions: flexibleStringArray,
+  related_article_keywords: flexibleStringArray,
+  relevance_score: relevanceScoreSchema,
+  warnings: flexibleStringArray
 });
 
 export const followUpAnalysisSchema = z.object({
   answer: z.string().min(1),
-  citations: z.array(citationSchema).default([]),
-  warnings: z.array(z.string().min(1)).default([])
+  citations: nullableArrayDefault(citationSchema),
+  warnings: nullableArrayDefault(z.string().min(1))
 });
 
 export const keywordGenerationSchema = z.object({
-  related_article_keywords: z.array(z.string().min(1)).default([]),
+  related_article_keywords: nullableArrayDefault(z.string().min(1)),
   rationale: z.string().min(1)
 });
 

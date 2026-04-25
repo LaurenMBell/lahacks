@@ -1,4 +1,9 @@
 export const GEMMA_PROMPT_VERSION = "gemma-v1";
+const MAX_ARTICLE_RAW_TEXT_CHARS = 3200;
+const MAX_ABSTRACT_CHARS = 1200;
+const MAX_HEADINGS = 12;
+const MAX_SECTION_LABELS = 30;
+const MAX_PRIOR_ANALYSIS_CHARS = 5000;
 
 export const ANALYSIS_SYSTEM_PROMPT = `
 You are Luma, a health-information interpreter inside a browser sidebar.
@@ -26,6 +31,14 @@ function formatUserProfile(userProfile) {
 }
 
 function formatArticle(articleSession) {
+  const rawText = `${articleSession.rawText || ""}`.slice(0, MAX_ARTICLE_RAW_TEXT_CHARS);
+  const abstractText = `${articleSession.abstractText || ""}`.slice(0, MAX_ABSTRACT_CHARS);
+  const headings = (articleSession.headings || []).slice(0, MAX_HEADINGS);
+  const sectionLabels = (articleSession.extractionPayload?.sectionLabels || []).slice(
+    0,
+    MAX_SECTION_LABELS
+  );
+
   return JSON.stringify(
     {
       title: articleSession.title,
@@ -35,10 +48,10 @@ function formatArticle(articleSession) {
       publishedAtLabel: articleSession.publishedAtLabel,
       pmid: articleSession.pmid,
       doi: articleSession.doi,
-      abstractText: articleSession.abstractText,
-      headings: articleSession.headings,
-      sectionLabels: articleSession.extractionPayload?.sectionLabels || [],
-      rawText: articleSession.rawText
+      abstractText,
+      headings,
+      sectionLabels,
+      rawText
     },
     null,
     2
@@ -108,7 +121,7 @@ User profile:
 ${formatUserProfile(userProfile)}
 
 Prior analysis:
-${JSON.stringify(priorAnalysis, null, 2)}
+${JSON.stringify(priorAnalysis, null, 2).slice(0, MAX_PRIOR_ANALYSIS_CHARS)}
 
 Article:
 ${formatArticle(articleSession)}
@@ -138,7 +151,7 @@ export function buildKeywordPrompt({ articleSession, priorAnalysis }) {
 Generate conservative PubMed search keywords based on the article and prior analysis.
 
 Prior analysis:
-${JSON.stringify(priorAnalysis, null, 2)}
+${JSON.stringify(priorAnalysis, null, 2).slice(0, MAX_PRIOR_ANALYSIS_CHARS)}
 
 Article:
 ${formatArticle(articleSession)}

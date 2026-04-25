@@ -108,44 +108,34 @@ export async function runArticleAnalysis({ articleSessionId, userProfile }) {
     });
 
     const result = completion.data;
-    const operations = [
-      prisma.articleInsight.create({
-        data: {
-          articleSessionId,
-          summary: result.summary,
-          userSpecificNotes: result.user_specific_notes,
-          followUpSuggestions: result.follow_up_suggestions,
-          relatedArticleKeywords: result.related_article_keywords,
-          warnings: result.warnings,
-          relevanceScore: result.relevance_score ?? null,
-          modelName: gemmaClient.model,
-          promptVersion: GEMMA_PROMPT_VERSION,
-          rawModelResponse: completion.rawResponse
-        }
-      }),
-      prisma.articleCitation.deleteMany({
-        where: { articleSessionId }
-      }),
-      prisma.articleTag.deleteMany({
-        where: { articleSessionId }
-      }),
-      prisma.articleSession.update({
-        where: { id: articleSessionId },
-        data: {
-          status: "complete",
-          completedAt: new Date(),
-          lastViewedAt: new Date()
-        }
-      }),
-      prisma.analysisJob.updateMany({
-        where: { articleSessionId, jobType: GEMMA_TASK_TYPES.ARTICLE_ANALYSIS },
-        data: { status: "complete", lastError: null }
-      })
-    ];
+    const now = new Date();
+    const insightData = {
+      articleSessionId,
+      summary: result.summary,
+      userSpecificNotes: result.user_specific_notes,
+      followUpSuggestions: result.follow_up_suggestions,
+      relatedArticleKeywords: result.related_article_keywords,
+      warnings: result.warnings,
+      relevanceScore: result.relevance_score ?? null,
+      modelName: gemmaClient.model,
+      promptVersion: GEMMA_PROMPT_VERSION,
+      rawModelResponse: completion.rawResponse
+    };
 
-    if (result.citations.length > 0) {
-      operations.push(
-        prisma.articleCitation.createMany({
+    const persisted = await prisma.$transaction(async (tx) => {
+      const createdInsight = await tx.articleInsight.create({
+        data: insightData
+      });
+
+      await tx.articleCitation.deleteMany({
+        where: { articleSessionId }
+      });
+      await tx.articleTag.deleteMany({
+        where: { articleSessionId }
+      });
+
+      if (result.citations.length > 0) {
+        await tx.articleCitation.createMany({
           data: result.citations.map((item, index) => ({
             articleSessionId,
             label: item.label,
@@ -155,13 +145,11 @@ export async function runArticleAnalysis({ articleSessionId, userProfile }) {
             explanation: item.explanation ?? null,
             orderIndex: index
           }))
-        })
-      );
-    }
+        });
+      }
 
-    if (result.tags.length > 0) {
-      operations.push(
-        prisma.articleTag.createMany({
+      if (result.tags.length > 0) {
+        await tx.articleTag.createMany({
           data: result.tags.map((item, index) => ({
             articleSessionId,
             label: item.label,
@@ -170,26 +158,42 @@ export async function runArticleAnalysis({ articleSessionId, userProfile }) {
             anchorText: item.anchor_text ?? null,
             orderIndex: index
           }))
-        })
-      );
-    }
+        });
+      }
 
-    await prisma.$transaction(operations);
+      await tx.articleSession.update({
+        where: { id: articleSessionId },
+        data: {
+          status: "complete",
+          completedAt: now,
+          lastViewedAt: now
+        }
+      });
+      await tx.analysisJob.updateMany({
+        where: { articleSessionId, jobType: GEMMA_TASK_TYPES.ARTICLE_ANALYSIS },
+        data: { status: "complete", lastError: null }
+      });
 
-    const persisted = await prisma.articleInsight.findFirst({
-      where: { articleSessionId },
-      orderBy: { createdAt: "desc" }
-    });
-    const citations = await prisma.articleCitation.findMany({
-      where: { articleSessionId },
-      orderBy: { orderIndex: "asc" }
-    });
-    const tags = await prisma.articleTag.findMany({
-      where: { articleSessionId },
-      orderBy: { orderIndex: "asc" }
+      return createdInsight;
     });
 
-    return serializeInsight(persisted, citations, tags);
+    // Return immediately from in-memory result rather than re-querying.
+    return serializeInsight(
+      persisted,
+      result.citations.map((item) => ({
+        label: item.label,
+        quote: item.quote,
+        sourceSection: item.source_section ?? null,
+        anchorText: item.anchor_text ?? null,
+        explanation: item.explanation ?? null
+      })),
+      result.tags.map((item) => ({
+        label: item.label,
+        value: item.value ?? null,
+        category: item.category,
+        anchorText: item.anchor_text ?? null
+      }))
+    );
   } catch (error) {
     await prisma.$transaction([
       prisma.articleSession.update({
