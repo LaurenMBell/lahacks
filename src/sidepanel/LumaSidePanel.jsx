@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 
 const tags = ["Study: women only", "Ages 18-40", "N=200"];
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:3001";
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+const API_TIMEOUT_MS = 15000;
 const initialProfile = {
   email: "",
   fullName: "",
@@ -33,14 +34,27 @@ function storageSet(value) {
 }
 
 async function apiRequest(path, { method = "GET", body, token } = {}) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
-    },
-    body: body ? JSON.stringify(body) : undefined
-  });
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error("Request timed out. Check that the backend is running.");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 
   const contentType = response.headers.get("content-type") || "";
   const payload = contentType.includes("application/json")
@@ -867,27 +881,15 @@ export function LumaSidePanel() {
     setAnalysisError("");
 
     try {
-      const response = await fetch(
-        "https://YOUR-VULTR-SERVER/summarize-article",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            articleText: pageContext.text,
-            url: pageContext.url,
-            title: pageContext.title,
-            userProfile
-          })
+      const payload = await apiRequest("/summarize-article", {
+        method: "POST",
+        body: {
+          articleText: pageContext.text,
+          url: pageContext.url,
+          title: pageContext.title,
+          userProfile
         }
-      );
-
-      if (!response.ok) {
-        throw new Error(`Backend request failed: ${response.status}`);
-      }
-
-      const payload = await response.json();
+      });
       setAnalysis(payload);
     } catch (error) {
       setAnalysisError(error.message || "Could not analyze this study right now.");

@@ -1,12 +1,14 @@
 import bcrypt from "bcryptjs";
 import { Router } from "express";
 import { z } from "zod";
+import { env } from "../config.js";
 import { prisma } from "../prisma.js";
 import { signAuthToken } from "../utils/auth.js";
 import { sendVerificationEmail } from "../utils/email.js";
 import { createVerificationToken } from "../utils/tokens.js";
 
 const router = Router();
+const EMAIL_SEND_TIMEOUT_MS = 8000;
 
 const signupSchema = z.object({
   email: z.string().email(),
@@ -55,11 +57,26 @@ router.post("/signup", async (req, res) => {
     }
   });
 
-  const delivery = await sendVerificationEmail({
-    email: user.email,
-    fullName: user.fullName,
-    token
-  });
+  let delivery;
+  try {
+    delivery = await Promise.race([
+      sendVerificationEmail({
+        email: user.email,
+        fullName: user.fullName,
+        token
+      }),
+      new Promise((_, reject) => {
+        setTimeout(() => {
+          reject(new Error("Email delivery timed out"));
+        }, EMAIL_SEND_TIMEOUT_MS);
+      })
+    ]);
+  } catch (_error) {
+    delivery = {
+      sent: false,
+      verifyUrl: `${env.APP_BASE_URL}/auth/verify?token=${token}`
+    };
+  }
 
   return res.status(201).json({
     message: delivery.sent

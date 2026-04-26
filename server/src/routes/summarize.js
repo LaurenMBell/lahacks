@@ -53,23 +53,26 @@ router.post("/summarize-article", async (req, res) => {
     });
   }
 
-  if (!env.OPENAI_API_KEY) {
-    return res.status(500).json({
-      error: "Server is missing OPENAI_API_KEY."
-    });
-  }
-
   const prompt = buildPrompt(parsed.data);
 
   try {
-    const llmResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      env.ANALYSIS_TIMEOUT_MS
+    );
+
+    const llmResponse = await fetch(env.GEMMA_API_URL, {
       method: "POST",
+      signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${env.OPENAI_API_KEY}`
+        ...(env.GEMMA_API_KEY
+          ? { Authorization: `Bearer ${env.GEMMA_API_KEY}` }
+          : {})
       },
       body: JSON.stringify({
-        model: env.OPENAI_MODEL,
+        model: env.GEMMA_MODEL,
         temperature: 0.2,
         messages: [
           {
@@ -84,6 +87,7 @@ router.post("/summarize-article", async (req, res) => {
         ]
       })
     });
+    clearTimeout(timeoutId);
 
     if (!llmResponse.ok) {
       const errorBody = await llmResponse.text();
@@ -121,6 +125,12 @@ router.post("/summarize-article", async (req, res) => {
 
     return res.status(200).json(validated.data);
   } catch (error) {
+    if (error.name === "AbortError") {
+      return res.status(504).json({
+        error: "Model request timed out.",
+        timeoutMs: env.ANALYSIS_TIMEOUT_MS
+      });
+    }
     return res.status(500).json({
       error: "Failed to summarize article.",
       details: error.message
