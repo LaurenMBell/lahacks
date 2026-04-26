@@ -60,56 +60,40 @@ function parseJsonFromText(text) {
   }
 }
 
-function normalizeToExpectedShape(raw) {
-  const objectValue =
-    raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
-
-  const pickFirstString = (...values) => {
-    for (const value of values) {
-      if (typeof value === "string" && value.trim()) {
-        return value.trim();
-      }
-    }
-    return "";
-  };
-
-  const toStringArray = (value) => {
-    if (Array.isArray(value)) {
-      return value
-        .map((item) => (typeof item === "string" ? item.trim() : ""))
-        .filter(Boolean);
-    }
-    if (typeof value === "string" && value.trim()) {
-      return [value.trim()];
-    }
-    return [];
-  };
-
-  return {
-    summary: pickFirstString(
-      objectValue.summary,
-      objectValue.overview,
-      objectValue.synopsis
-    ),
-    womenSections: toStringArray(
-      objectValue.womenSections ?? objectValue.womenMentions ?? objectValue.sexDifferences
-    ),
-    biasNotes: toStringArray(
-      objectValue.biasNotes ?? objectValue.biasFlags ?? objectValue.biases
-    ),
-    followUpQuestions: toStringArray(
-      objectValue.followUpQuestions ??
-        objectValue.followupQuestions ??
-        objectValue.questions
-    )
-  };
-}
-
 function truncateArticleText(articleText) {
   if (articleText.length <= env.ANALYSIS_MAX_ARTICLE_CHARS) {
     return articleText;
   }
   return `${articleText.slice(0, env.ANALYSIS_MAX_ARTICLE_CHARS)}\n\n[Truncated for analysis length.]`;
+}
+
+function toStringOrEmpty(value) {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  if (value == null) {
+    return "";
+  }
+  if (typeof value === "object") {
+    if (typeof value.text === "string") {
+      return value.text.trim();
+    }
+    return JSON.stringify(value);
+  }
+  return String(value).trim();
+}
+
+function toStringArray(value) {
+  if (value == null) {
+    return [];
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => toStringOrEmpty(item))
+      .filter((item) => item.length > 0);
+  }
+  const single = toStringOrEmpty(value);
+  return single ? [single] : [];
 }
 
 router.post("/summarize-article", async (req, res) => {
@@ -126,22 +110,17 @@ router.post("/summarize-article", async (req, res) => {
     articleText: truncateArticleText(parsed.data.articleText)
   });
 
-  let timeoutId;
   try {
-    const controller = new AbortController();
-    timeoutId = setTimeout(
-      () => controller.abort(),
-      env.ANALYSIS_TIMEOUT_MS
-    );
+    const headers = {
+      "Content-Type": "application/json"
+    };
+    if (env.GEMMA_API_KEY) {
+      headers.Authorization = `Bearer ${env.GEMMA_API_KEY}`;
+    }
+
     const llmResponse = await fetch(env.GEMMA_API_URL, {
       method: "POST",
-      signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        ...(env.GEMMA_API_KEY
-          ? { Authorization: `Bearer ${env.GEMMA_API_KEY}` }
-          : {})
-      },
+      headers,
       body: JSON.stringify({
         model: env.GEMMA_MODEL,
         temperature: 0.1,
@@ -160,7 +139,8 @@ router.post("/summarize-article", async (req, res) => {
             content: prompt
           }
         ]
-      })
+      }),
+      signal: AbortSignal.timeout(env.ANALYSIS_TIMEOUT_MS)
     });
 
     if (!llmResponse.ok) {
@@ -180,7 +160,21 @@ router.post("/summarize-article", async (req, res) => {
       });
     }
 
-    const analysis = normalizeToExpectedShape(parseJsonFromText(content));
+    const analysis = parseJsonFromText(content);
+    const normalizedAnalysis = {
+      summary: toStringOrEmpty(
+        analysis?.summary ?? analysis?.overview ?? analysis?.synopsis
+      ),
+      womenSections: toStringArray(
+        analysis?.womenSections ?? analysis?.womenMentions ?? analysis?.sexDifferences
+      ),
+      biasNotes: toStringArray(
+        analysis?.biasNotes ?? analysis?.biasFlags ?? analysis?.biases
+      ),
+      followUpQuestions: toStringArray(
+        analysis?.followUpQuestions ?? analysis?.followupQuestions ?? analysis?.questions
+      )
+    };
 
     const analysisSchema = z.object({
       summary: z.string().min(1),
@@ -189,7 +183,7 @@ router.post("/summarize-article", async (req, res) => {
       followUpQuestions: z.array(z.string())
     });
 
-    const validated = analysisSchema.safeParse(analysis);
+    const validated = analysisSchema.safeParse(normalizedAnalysis);
     if (!validated.success) {
       return res.status(502).json({
         error: "LLM JSON did not match expected shape.",
@@ -209,10 +203,6 @@ router.post("/summarize-article", async (req, res) => {
       error: "Failed to summarize article.",
       details: error.message
     });
-  } finally {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
   }
 });
 
