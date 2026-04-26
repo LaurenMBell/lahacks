@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
-
-const tags = ["Study: women only", "Ages 18-40", "N=200"];
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
-const API_TIMEOUT_MS = 15000;
+const API_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 120000);
 const initialProfile = {
   email: "",
   fullName: "",
@@ -49,7 +47,9 @@ async function apiRequest(path, { method = "GET", body, token } = {}) {
     });
   } catch (error) {
     if (error.name === "AbortError") {
-      throw new Error("Request timed out. Check that the backend is running.");
+      throw new Error(
+        "Request timed out while waiting for analysis. The model may be slow or still loading."
+      );
     }
     throw error;
   } finally {
@@ -96,9 +96,9 @@ function SignupStep({
   return (
     <section className="flow-card">
       <div className="flow-eyebrow">Create account</div>
-      <h2 className="flow-title">Start your Luma profile</h2>
+      <h2 className="flow-title">Start your WebMedica profile</h2>
       <p className="flow-copy">
-        Sign up with your email so Luma can save your health context and tailor
+        Sign up with your email so WebMedica can save your health context and tailor
         article insights over time.
       </p>
 
@@ -228,7 +228,7 @@ function SurveyStep({ form, onChange, onSubmit }) {
   return (
     <section className="flow-card">
       <div className="flow-eyebrow">Intro survey</div>
-      <h2 className="flow-title">Tell Luma a bit about you</h2>
+      <h2 className="flow-title">Tell WebMedica a bit about you</h2>
       <p className="flow-copy">
         This basic health profile helps future article summaries reflect your
         context more accurately.
@@ -416,6 +416,7 @@ function ReadyState({
   analysis,
   analysisError
 }) {
+  const [activeTab, setActiveTab] = useState("analysis");
   const pageTitle = pageContext?.title || "—";
   const articleSnippet = truncateText(pageContext?.text, 140);
 
@@ -423,7 +424,7 @@ function ReadyState({
     <>
       <header className="panel-header">
         <div className="brand-row">
-          <div className="brand">Luma</div>
+          <div className="brand">WebMedica</div>
           <div className="header-controls">
             <button
               className={`toggle ${isEnabled ? "is-on" : ""}`}
@@ -440,7 +441,7 @@ function ReadyState({
         </div>
 
         <div className="status">
-          <span>{isEnabled ? "Analyzing page for you" : "Luma is paused"}</span>
+          <span>{isEnabled ? "Analyzing page for you" : "WebMedica is paused"}</span>
           {isEnabled ? (
             <span className="status-dots" aria-hidden="true">
               <i></i>
@@ -452,101 +453,159 @@ function ReadyState({
       </header>
 
       <main className="panel-content">
-        <div className="page-context">
-          <div className="context-label">Current page</div>
-          <div className="context-title">{pageTitle}</div>
-          <div className="context-url">{pageContext?.url || "—"}</div>
-        </div>
-
-        <div className="page-context">
-          <div className="context-label">Current article</div>
-          <div className="context-title">{articleSnippet}</div>
-          <div className="context-url">
-            {pageContext ? "Ready to analyze." : "Waiting for page context..."}
-          </div>
+        <div className="panel-tabs" role="tablist" aria-label="WebMedica panel tabs">
           <button
-            className="primary-button analyze-button"
             type="button"
-            onClick={onAnalyze}
-            disabled={isAnalyzing || !pageContext}
+            role="tab"
+            aria-selected={activeTab === "analysis"}
+            className={`panel-tab ${activeTab === "analysis" ? "is-active" : ""}`}
+            onClick={() => setActiveTab("analysis")}
           >
-            {isAnalyzing ? "Analyzing with AI..." : "Analyze this study"}
+            Analysis
           </button>
-          {analysisError ? <p className="analysis-error">{analysisError}</p> : null}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "profile"}
+            className={`panel-tab ${activeTab === "profile" ? "is-active" : ""}`}
+            onClick={() => setActiveTab("profile")}
+          >
+            Profile
+          </button>
         </div>
 
-        <div className="profile-summary">
-          <div className="context-label">Saved profile</div>
-          <div className="summary-grid">
-            <div>
-              <span className="summary-key">Email</span>
-              <span className="summary-value">{profile.email}</span>
-            </div>
-            <div>
-              <span className="summary-key">Age range</span>
-              <span className="summary-value">{profile.ageRange || "Not set"}</span>
-            </div>
-            <div>
-              <span className="summary-key">Sex at birth</span>
-              <span className="summary-value">
-                {profile.sexAssignedAtBirth || "Not set"}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {analysis ? (
-          <article className="insight-card">
-            <div className="context-label">This study focuses on...</div>
-            <p className="insight-copy">{analysis.summary}</p>
-
-            <div className="analysis-section">
-              <h3>What this means for women</h3>
-              <ul>
-                {(analysis.womenSections || []).map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
+        {activeTab === "analysis" ? (
+          <>
+            <div className="page-context">
+              <div className="context-label">Current page and article</div>
+              <div className="context-title">{pageTitle}</div>
+              <div className="context-url">{pageContext?.url || "—"}</div>
+              <div className="context-snippet">{articleSnippet}</div>
+              <div className="context-url">
+                {pageContext ? "Ready to analyze." : "Waiting for page context..."}
+              </div>
+              <button
+                className="primary-button analyze-button"
+                type="button"
+                onClick={onAnalyze}
+                disabled={isAnalyzing || !pageContext}
+              >
+                {isAnalyzing ? "Analyzing with AI..." : "Analyze this study"}
+              </button>
+              {analysisError ? <p className="analysis-error">{analysisError}</p> : null}
             </div>
 
-            <div className="analysis-section">
-              <h3>Bias notes</h3>
-              <ul>
-                {(analysis.biasNotes || []).map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </div>
+            <article className="insight-card">
+              <div className="context-label">Resulting analysis</div>
+              {analysis ? (
+                <>
+                  <p className="insight-copy">{analysis.summary}</p>
 
-            <div className="analysis-section">
-              <h3>Follow-up questions</h3>
-              <ul>
-                {(analysis.followUpQuestions || []).map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </div>
-          </article>
+                  <div className="analysis-section">
+                    <h3>What this means for women</h3>
+                    <ul>
+                      {(analysis.womenSections || []).map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="analysis-section">
+                    <h3>Bias notes</h3>
+                    <ul>
+                      {(analysis.biasNotes || []).map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="analysis-section">
+                    <h3>Follow-up questions</h3>
+                    <ul>
+                      {(analysis.followUpQuestions || []).map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </>
+              ) : (
+                <p className="analysis-empty">
+                  Run analysis to see a women-focused summary and follow-up questions.
+                </p>
+              )}
+            </article>
+          </>
         ) : (
-          <article className="insight-card">
-            <div className="relevance-pill">High relevance · PCOS</div>
-            <p className="insight-copy">
-              This study focuses on insulin resistance in women with PCOS ages
-              18-35 directly relevant to your profile.
-            </p>
-            <div className="tag-row">
-              {tags.map((tag) => (
-                <span className="tag" key={tag}>
-                  {tag}
+          <article className="profile-summary profile-tab-card">
+            <div className="context-label">Saved profile</div>
+            <div className="summary-grid">
+              <div>
+                <span className="summary-key">Email</span>
+                <span className="summary-value">{profile.email || "Not set"}</span>
+              </div>
+              <div>
+                <span className="summary-key">Full name</span>
+                <span className="summary-value">{profile.fullName || "Not set"}</span>
+              </div>
+              <div>
+                <span className="summary-key">Age range</span>
+                <span className="summary-value">{profile.ageRange || "Not set"}</span>
+              </div>
+              <div>
+                <span className="summary-key">Weight</span>
+                <span className="summary-value">{profile.weight || "Not set"}</span>
+              </div>
+              <div>
+                <span className="summary-key">Sex assigned at birth</span>
+                <span className="summary-value">
+                  {profile.sexAssignedAtBirth || "Not set"}
                 </span>
-              ))}
+              </div>
+              <div>
+                <span className="summary-key">Gender</span>
+                <span className="summary-value">{profile.gender || "Not set"}</span>
+              </div>
+              <div>
+                <span className="summary-key">Family medical history</span>
+                <span className="summary-value">
+                  {profile.familyMedicalHistory || "Not set"}
+                </span>
+              </div>
+              <div>
+                <span className="summary-key">Substance use</span>
+                <span className="summary-value">
+                  {profile.substanceUse?.length
+                    ? profile.substanceUse.join(", ")
+                    : "Not set"}
+                </span>
+              </div>
+              <div>
+                <span className="summary-key">Dietary restrictions</span>
+                <span className="summary-value">
+                  {profile.dietaryRestrictions?.length
+                    ? profile.dietaryRestrictions.join(", ")
+                    : "Not set"}
+                </span>
+              </div>
+              <div>
+                <span className="summary-key">Conditions</span>
+                <span className="summary-value">{profile.conditions || "Not set"}</span>
+              </div>
+              <div>
+                <span className="summary-key">Medications</span>
+                <span className="summary-value">{profile.medications || "Not set"}</span>
+              </div>
+              <div>
+                <span className="summary-key">Goals</span>
+                <span className="summary-value">{profile.goals || "Not set"}</span>
+              </div>
             </div>
           </article>
         )}
       </main>
 
       <footer className="panel-footer">
-        <div className="footer-label">Ask Luma</div>
+        <div className="footer-label">Ask WebMedica</div>
         <form className="ask-form">
           <label className="sr-only" htmlFor="follow-up">
             Ask a follow-up question
@@ -939,7 +998,7 @@ export function LumaSidePanel() {
       ) : (
         <main className="panel-auth">
           <div className="auth-header">
-            <div className="brand">Luma</div>
+            <div className="brand">WebMedica</div>
             <p className="auth-subtitle">
               Personalized health context starts with a verified account and a
               lightweight intro survey.

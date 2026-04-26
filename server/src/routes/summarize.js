@@ -11,20 +11,36 @@ const summarizeSchema = z.object({
   userProfile: z.record(z.any())
 });
 
+function compactUserProfile(userProfile) {
+  const safeProfile =
+    userProfile && typeof userProfile === "object" && !Array.isArray(userProfile)
+      ? userProfile
+      : {};
+  return {
+    ageRange: safeProfile.ageRange || null,
+    sexAssignedAtBirth: safeProfile.sexAssignedAtBirth || null,
+    gender: safeProfile.gender || null,
+    conditions: safeProfile.conditions || null,
+    medications: safeProfile.medications || null,
+    goals: safeProfile.goals || null
+  };
+}
+
 function buildPrompt({ title, url, userProfile, articleText }) {
-  return `You are helping a women's health Chrome extension called Woman WebMD.
+  return `You are helping a women's health Chrome extension called WebMedica.
 
 Article title: ${title}
 URL: ${url}
-User profile (JSON): ${JSON.stringify(userProfile)}
+User profile (JSON): ${JSON.stringify(compactUserProfile(userProfile))}
 
 Article text:
 ${articleText}
 
-Briefly describe what this study focuses on, in 2-3 sentences, focusing on women's health.
-Identify explicit mentions of women/female/sex differences.
-Flag any signs of bias (for example, more male than female subjects) if present.
-Generate 3-5 follow-up questions this user might ask their doctor.
+Task:
+1) Write a 2 sentence summary focused on women's health relevance.
+2) List up to 4 explicit mentions of women/female/sex differences.
+3) List up to 3 potential bias notes if present.
+4) List exactly 3 concise follow-up questions for a doctor.
 
 Return valid JSON only with the shape:
 { "summary": string, "womenSections": string[], "biasNotes": string[], "followUpQuestions": string[] }.`;
@@ -44,6 +60,58 @@ function parseJsonFromText(text) {
   }
 }
 
+function normalizeToExpectedShape(raw) {
+  const objectValue =
+    raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+
+  const pickFirstString = (...values) => {
+    for (const value of values) {
+      if (typeof value === "string" && value.trim()) {
+        return value.trim();
+      }
+    }
+    return "";
+  };
+
+  const toStringArray = (value) => {
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => (typeof item === "string" ? item.trim() : ""))
+        .filter(Boolean);
+    }
+    if (typeof value === "string" && value.trim()) {
+      return [value.trim()];
+    }
+    return [];
+  };
+
+  return {
+    summary: pickFirstString(
+      objectValue.summary,
+      objectValue.overview,
+      objectValue.synopsis
+    ),
+    womenSections: toStringArray(
+      objectValue.womenSections ?? objectValue.womenMentions ?? objectValue.sexDifferences
+    ),
+    biasNotes: toStringArray(
+      objectValue.biasNotes ?? objectValue.biasFlags ?? objectValue.biases
+    ),
+    followUpQuestions: toStringArray(
+      objectValue.followUpQuestions ??
+        objectValue.followupQuestions ??
+        objectValue.questions
+    )
+  };
+}
+
+function truncateArticleText(articleText) {
+  if (articleText.length <= env.ANALYSIS_MAX_ARTICLE_CHARS) {
+    return articleText;
+  }
+  return `${articleText.slice(0, env.ANALYSIS_MAX_ARTICLE_CHARS)}\n\n[Truncated for analysis length.]`;
+}
+
 router.post("/summarize-article", async (req, res) => {
   const parsed = summarizeSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -53,7 +121,10 @@ router.post("/summarize-article", async (req, res) => {
     });
   }
 
-  const prompt = buildPrompt(parsed.data);
+  const prompt = buildPrompt({
+    ...parsed.data,
+    articleText: truncateArticleText(parsed.data.articleText)
+  });
 
   try {
     const controller = new AbortController();
@@ -73,7 +144,11 @@ router.post("/summarize-article", async (req, res) => {
       },
       body: JSON.stringify({
         model: env.GEMMA_MODEL,
-        temperature: 0.2,
+        temperature: 0.1,
+        max_tokens: env.ANALYSIS_MAX_TOKENS,
+        response_format: {
+          type: "json_object"
+        },
         messages: [
           {
             role: "system",
@@ -106,10 +181,10 @@ router.post("/summarize-article", async (req, res) => {
       });
     }
 
-    const analysis = parseJsonFromText(content);
+    const analysis = normalizeToExpectedShape(parseJsonFromText(content));
 
     const analysisSchema = z.object({
-      summary: z.string(),
+      summary: z.string().min(1),
       womenSections: z.array(z.string()),
       biasNotes: z.array(z.string()),
       followUpQuestions: z.array(z.string())

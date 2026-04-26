@@ -127,7 +127,7 @@ router.get("/verify", async (req, res) => {
 
   return res
     .status(200)
-    .send("Email verified. You can return to the Luma extension and sign in.");
+    .send("Email verified. You can return to the WebMedica extension and sign in.");
 });
 
 router.post("/login", async (req, res) => {

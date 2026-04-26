@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Luma",
+  "name": "WebMedica",
   "version": "0.1.0",
   "description": "A women's health personalization side panel for contextual article insights.",
   "permissions": [
@@ -17,7 +17,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "Open Luma"
+    "default_title": "Open WebMedica"
   },
   "side_panel": {
     "default_path": "sidepanel.html"

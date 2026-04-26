@@ -19,12 +19,12 @@ export async function sendVerificationEmail({ email, fullName, token }) {
   await resend.emails.send({
     from: env.EMAIL_FROM,
     to: email,
-    subject: "Verify your Luma account",
+    subject: "Verify your WebMedica account",
     html: `
       <div style="font-family:Arial,sans-serif;line-height:1.6;color:#2f2a26">
         <h2>Verify your email</h2>
         <p>Hi ${fullName},</p>
-        <p>Click the link below to verify your Luma account:</p>
+        <p>Click the link below to verify your WebMedica account:</p>
         <p><a href="${verifyUrl}">${verifyUrl}</a></p>
         <p>This link expires in 24 hours.</p>
       </div>

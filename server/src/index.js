@@ -23,5 +23,5 @@ app.use("/profile", profileRoutes);
 app.use("/", summarizeRoutes);
 
 app.listen(env.PORT, () => {
-  console.log(`Luma backend listening on port ${env.PORT}`);
+  console.log(`WebMedica backend listening on port ${env.PORT}`);
 });

@@ -12,7 +12,9 @@ const envSchema = z.object({
   GEMMA_API_URL: z.string().url().default("http://localhost:11434/v1/chat/completions"),
   GEMMA_API_KEY: z.string().optional(),
   GEMMA_MODEL: z.string().default("gemma:2b"),
-  ANALYSIS_TIMEOUT_MS: z.coerce.number().int().positive().default(30000)
+  ANALYSIS_TIMEOUT_MS: z.coerce.number().int().positive().default(45000),
+  ANALYSIS_MAX_ARTICLE_CHARS: z.coerce.number().int().positive().default(5000),
+  ANALYSIS_MAX_TOKENS: z.coerce.number().int().positive().default(220)
 });
 
 export const env = envSchema.parse(process.env);
