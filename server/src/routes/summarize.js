@@ -126,13 +126,13 @@ router.post("/summarize-article", async (req, res) => {
     articleText: truncateArticleText(parsed.data.articleText)
   });
 
+  let timeoutId;
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(
+    timeoutId = setTimeout(
       () => controller.abort(),
       env.ANALYSIS_TIMEOUT_MS
     );
-
     const llmResponse = await fetch(env.GEMMA_API_URL, {
       method: "POST",
       signal: controller.signal,
@@ -162,7 +162,6 @@ router.post("/summarize-article", async (req, res) => {
         ]
       })
     });
-    clearTimeout(timeoutId);
 
     if (!llmResponse.ok) {
       const errorBody = await llmResponse.text();
@@ -210,6 +209,10 @@ router.post("/summarize-article", async (req, res) => {
       error: "Failed to summarize article.",
       details: error.message
     });
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
 });
 
